@@ -223,6 +223,22 @@ public OnPlayerDisconnect(playerid, reason)
 	return 1;
 }
 
+public OnPlayerSpawn(playerid)
+{
+    new string[256];
+	new giveplayer[MAX_PLAYER_NAME];
+	for(new i = 0; i < MAX_PLAYERS; i++)
+	{
+		if (spectate[i] == playerid)
+		{
+			GetPlayerName(playerid, giveplayer, sizeof(giveplayer));
+			format(string, sizeof(string), " Игрок: %s [%d] (спавн, респавн)", giveplayer, playerid);
+			SendClientMessage(i, COLOR_GREEN, string);
+		}
+	}
+	return 1;
+}
+
 public SendAdminMessage(para1, para2, color, string[])
 {
 	for(new i = 0; i < MAX_PLAYERS; i++)

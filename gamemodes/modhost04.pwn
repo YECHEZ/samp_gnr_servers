@@ -794,6 +794,11 @@ new MapIconID[BUS_MAX];//массив ИД мап-иконок
 new Text3D:Nbus[BUS_MAX];//массив ИД 3D-текстов
 //---------------------------- End BusSystem -----------------------------------
 
+new ct9control[MAX_PLAYERS];//античит управления чужим транспортом
+new ct9delay;
+new Float:ct9concord[3][4][MAX_PLAYERS];
+new Float:ct9dopcord[3][MAX_PLAYERS];
+new Float:ct9dltcord[2][MAX_PLAYERS];
 new conconTD[MAX_PLAYERS];//блокировка создания текст-дравов при подключении игрока
 new StopHidrav[MAX_PLAYERS];//переменная задержки гидравлики
 #if (MOD11INS >= 3)
@@ -1328,7 +1333,9 @@ public OnGameModeInit()
 		strdel(NameTarget[i], 0, MAX_PLAYER_NAME);//очистка ника игрока по таймеру
 		playspa[i] = 0;//обнуление переменных спавна игроков
 		mapiconid[i] = -600;//очистка ID мап иконок наблюдения
+		ct9control[i] = 0;
 	}
+	ct9delay = 0;
 
 	for(new i=0;i<MAX_PLAYERS;i++)//Clans system
 	{
@@ -1737,6 +1744,18 @@ public OnPlayerConnect(playerid)
 	SetPVarInt(playerid, "PlMon", 1000);//глобальная переменная денег игрока
 	SetPVarInt(playerid, "PlSkin", 0);//глобальная переменная скина игрока
 	SetPVarInt(playerid, "PlFrost", 0);//глобальная переменная заморозки игрока
+
+	SetPVarInt(playerid, "PlCRct9", 0);//глобальная переменная блокировки античита управления чужим транспортом
+	ct9control[playerid] = 0;
+	ct9concord[0][1][playerid] = 0.0;//обнуление баз конвеера
+	ct9concord[1][1][playerid] = 0.0;
+	ct9concord[2][1][playerid] = 0.0;
+	ct9concord[0][2][playerid] = 0.0;
+	ct9concord[1][2][playerid] = 0.0;
+	ct9concord[2][2][playerid] = 0.0;
+	ct9concord[0][3][playerid] = 0.0;
+	ct9concord[1][3][playerid] = 0.0;
+	ct9concord[2][3][playerid] = 0.0;
 
 	//вход на сервер
 	new string[256];
@@ -2307,6 +2326,8 @@ public OnPlayerDisconnect(playerid, reason)
 	DeletePVar(playerid, "CComAc14");
 	DeletePVar(playerid, "CComAc15");
 	strdel(RealName[playerid],0,MAX_PLAYER_NAME);//очистить реальный ник игрока
+	ct9control[playerid] = 0;
+	DeletePVar(playerid, "PlCRct9");//удаляем глобальную переменную блокировки античита управления чужим транспортом
 	crash5count[playerid] = 0;//обнуляем контроль антикрашера - 5
 	crash6[playerid] = 0;//обнуляем контроль антикрашера - 6
 	crash7count[playerid] = 0;//обнуляем контроль антикрашера - 7
@@ -2506,6 +2527,7 @@ public OnPlayerSpawn(playerid)
 	playspabs[playerid] = 1;//игрок заспавнился
 //---------------------------- End BusSystem -----------------------------------
 
+	SetPVarInt(playerid, "PlCRct9", 1);//блокировка античита управления чужим транспортом
 	if(PlayLock1[0][playerid] != 600 && PlayerInfo[playerid][pPrisonsec] == 0)
 	{//если игрок заблокирован, и не сидит в тюрьме, то заменяем данные блокировки на данные полицейского участка
 		PlayLock1[1][playerid] = 3;//интерьер полицейского участка
@@ -2570,6 +2592,7 @@ public OnPlayerSpawn(playerid)
 				if(playspa[playerid] == 0)//если это первый спавн игрока, то:
 				{
 					SetTimerEx("Logg333", 1000, 0, "i", playerid);//задержка, на время чтения аккаунта клана
+					SetTimerEx("ct9spawn", 2000, 0, "i", playerid);
 				}
 			}
 
@@ -2792,6 +2815,13 @@ public Logg333(playerid)
 	{//если игрок состоит в клане, и ID его клана НЕ был найден в списке, то:
 		idgangsave[playerid] = PGang[playerid];//записываем в список ID клана игрока
 	}
+	return 1;
+}
+
+forward ct9spawn(playerid);
+public ct9spawn(playerid)
+{
+	ct9control[playerid] = 1;
 	return 1;
 }
 
@@ -16710,6 +16740,43 @@ public OnRconLoginAttempt(ip[], password[], success)
 public OnPlayerUpdate(playerid)
 {
 	NETafkPl[playerid][0] = 0;//обнулить контрольную переменную AFK
+
+	if(ct9control[playerid] == 1)
+	{
+//------------------------ конвеер ---------------------------------------------
+		ct9concord[0][0][playerid] = ct9concord[0][1][playerid];//база 0
+		ct9concord[1][0][playerid] = ct9concord[1][1][playerid];
+		ct9concord[2][0][playerid] = ct9concord[2][1][playerid];
+
+		ct9concord[0][1][playerid] = ct9concord[0][2][playerid];//база 1
+		ct9concord[1][1][playerid] = ct9concord[1][2][playerid];
+		ct9concord[2][1][playerid] = ct9concord[2][2][playerid];
+
+		ct9concord[0][2][playerid] = ct9concord[0][3][playerid];//база 2
+		ct9concord[1][2][playerid] = ct9concord[1][3][playerid];
+		ct9concord[2][2][playerid] = ct9concord[2][3][playerid];
+
+		GetPlayerPos(playerid, ct9concord[0][3][playerid], ct9concord[1][3][playerid], ct9concord[2][3][playerid]);//база 3
+//------------------------ разница 0-1 -----------------------------------------
+		ct9dopcord[0][playerid] = ct9concord[0][1][playerid] - ct9concord[0][0][playerid];
+		ct9dopcord[1][playerid] = ct9concord[1][1][playerid] - ct9concord[1][0][playerid];
+		ct9dopcord[2][playerid] = ct9concord[2][1][playerid] - ct9concord[2][0][playerid];
+//------------------------ дельта 0-1 ------------------------------------------
+		ct9dltcord[0][playerid] = ct9dopcord[0][playerid] * ct9dopcord[0][playerid] +
+		ct9dopcord[1][playerid] * ct9dopcord[1][playerid] + ct9dopcord[2][playerid] * ct9dopcord[2][playerid];
+//------------------------ разница 0-3 -----------------------------------------
+		ct9dopcord[0][playerid] = ct9concord[0][3][playerid] - ct9concord[0][0][playerid];
+		ct9dopcord[1][playerid] = ct9concord[1][3][playerid] - ct9concord[1][0][playerid];
+		ct9dopcord[2][playerid] = ct9concord[2][3][playerid] - ct9concord[2][0][playerid];
+//------------------------ дельта 0-3 ------------------------------------------
+		ct9dltcord[1][playerid] = ct9dopcord[0][playerid] * ct9dopcord[0][playerid] +
+		ct9dopcord[1][playerid] * ct9dopcord[1][playerid] + ct9dopcord[2][playerid] * ct9dopcord[2][playerid];
+//------------------------ условие чита ----------------------------------------
+		if(ct9dltcord[0][playerid] > 110.0 && ct9dltcord[1][playerid] < 90.0)
+		{
+			ct9control[playerid] = 5;
+		}
+	}
 	return 1;
 }
 
@@ -31299,6 +31366,7 @@ public StopDrift(playerid,regm,per1,per2,Float:per3,Float:cor1,Float:cor2,Float:
 			{//или это сам инициатор, то:
 				PlayCRTP[i] = 1;//блокировка контроля координат
 				tpdrift[i] = 1;//блокировка счётчика дрифта
+				SetPVarInt(i, "PlCRct9", 1);//блокировка античита управления чужим транспортом
 			}
 			if(IsPlayerInRangeOfPoint(i, 15.0, X, Y, Z))//если игрок в радиусе 15 (стоит на машине), то:
 			{
@@ -34288,6 +34356,29 @@ public OneSecOnd()
 	{
 		if(IsPlayerConnected(i))//дальнейшее выполняем если игрок в коннекте
 		{
+			if(admper1[i] != 600)//если игрок - админ ведущий наблюдение, то:
+			{
+				SetPVarInt(i, "PlCRct9", 1);//блокировка античита управления чужим транспортом
+			}
+			if(GetPVarInt(i, "PlCRct9") != 0 && ct9control[i] == 5)
+			{//если есть блокировка античита управления чужим транспортом, И найден чит, то:
+				ct9control[i] = 1;//сброс определения чита (включение контроля чита)
+			}
+			if(ct9delay == 0 && ct9control[i] == 5)//если задержка равна 0, И найден чит, то:
+			{
+				ct9delay++;//включение задержки
+				ct9control[i] = 0;//выключение контроля чита
+				format(string, sizeof(string), "* Игрок %s [%d] был кикнут - чит управления чужим транспортом !", RealName[i], i);
+				print(string);
+				SendClientMessageToAll(COLOR_RED, string);
+				SetTimerEx("PlayKick", 300, 0, "i", i);
+			}
+			if(ct9control[i] == 5)//если чит был найден, то:
+			{
+				ct9control[i] = 1;//сброс определения чита (включение контроля чита)
+			}
+			if(GetPVarInt(i, "PlCRct9") != 0) { SetPVarInt(i, "PlCRct9", GetPVarInt(i, "PlCRct9") + 1); }
+			if(GetPVarInt(i, "PlCRct9") >= 4) { SetPVarInt(i, "PlCRct9", 0); }//снятие блокировки античита управления чужим транспортом
 //----- антикрашер игроков - 7 (июль 2017, краш обнаружен на версии 0.3.7) -----
 			if(crash7count[i] >= 10)
 			{
@@ -34855,6 +34946,8 @@ public OneSecOnd()
 			}
 		}
 	}
+	if(ct9delay != 0) { ct9delay++; }
+	if(ct9delay >= 5) { ct9delay = 0; }
 	if(nucexplos == 0 && nucexptime == -100)//если активна автоматическая отмена ядерного взрыва, то:
 	{
 		format(string, sizeof(string), "* Последствия ядерного взрыва были автоматически ликвидированы.");
@@ -35942,21 +36035,6 @@ public RepairCar()
 						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
 					}
 				}
-				if(impcon[7] == 0)//замена суммы денег
-				{
-					if(GetPVarInt(imploc2, "PlMon") != impdata[7])
-					{
-						new mnloc;
-						mnloc = GetPVarInt(imploc2, "PlMon");
-						SetPVarInt(imploc2, "PlMon", impdata[7]);
-						format(ssss, sizeof(ssss), " **** Замена суммы денег игрока [%s] на %d $ .", RealName[imploc2], GetPVarInt(imploc2, "PlMon"));
-						print(ssss);
-						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
-						printf("[moneysys] Предыдущая сумма игрока %s [%d] : %d $", RealName[imploc2], imploc2, mnloc);
-						format(ssss, sizeof(ssss), " **** Ваша сумма денег была заменена на %d $ .", GetPVarInt(imploc2, "PlMon"));
-						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
-					}
-				}
 				if(impcon[8] == 0)//замена VIP лвл
 				{
 					if(PlayerInfo[imploc2][pVIP] != impdata[8])
@@ -36041,6 +36119,24 @@ public RepairCar()
 							SendClientMessage(imploc2, COLOR_RED, ssss);
 							format(ssss, sizeof(ssss), " *** Так же, в админ-чат, Вы можете подать апелляционную жалобу.");
 							SendClientMessage(imploc2, COLOR_RED, ssss);
+						}
+					}
+				}
+				if(impcon[7] == 0)//замена суммы денег
+				{
+					if(PlayerInfo[imploc2][pVIP] != 3)//если нет депортации, то:
+					{
+						if(GetPVarInt(imploc2, "PlMon") != impdata[7])
+						{
+							new mnloc;
+							mnloc = GetPVarInt(imploc2, "PlMon");
+							SetPVarInt(imploc2, "PlMon", impdata[7]);
+							format(ssss, sizeof(ssss), " **** Замена суммы денег игрока [%s] на %d $ .", RealName[imploc2], GetPVarInt(imploc2, "PlMon"));
+							print(ssss);
+							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							printf("[moneysys] Предыдущая сумма игрока %s [%d] : %d $", RealName[imploc2], imploc2, mnloc);
+							format(ssss, sizeof(ssss), " **** Ваша сумма денег была заменена на %d $ .", GetPVarInt(imploc2, "PlMon"));
+							SendClientMessage(imploc2, COLOR_YELLOW, ssss);
 						}
 					}
 				}
@@ -36484,19 +36580,6 @@ public RepairCar()
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						}
 					}
-					if(impcon[7] == 0)//замена суммы денег
-					{
-						if(data2[9] != impdata[7])
-						{
-							new mnloc;
-							mnloc = data2[9];
-							data2[9] = impdata[7];
-							format(ssss, sizeof(ssss), " **** Замена суммы денег аккаунта игрока [%s] на %d $ .", impdatas[0], data2[9]);
-							print(ssss);
-							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
-							printf("[moneysys] Предыдущая сумма аккаунта игрока %s : %d $", impdatas[0], mnloc);
-						}
-					}
 					if(impcon[8] == 0)//замена VIP лвл
 					{
 						if(data2[12] != impdata[8])
@@ -36566,6 +36649,22 @@ public RepairCar()
 							}
 						}
 					}
+					if(impcon[7] == 0)//замена суммы денег
+					{
+						if(data2[12] != 3)//если нет депортации, то:
+						{
+							if(data2[9] != impdata[7])
+							{
+								new mnloc;
+								mnloc = data2[9];
+								data2[9] = impdata[7];
+								format(ssss, sizeof(ssss), " **** Замена суммы денег аккаунта игрока [%s] на %d $ .", impdatas[0], data2[9]);
+								print(ssss);
+								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								printf("[moneysys] Предыдущая сумма аккаунта игрока %s : %d $", impdatas[0], mnloc);
+							}
+						}
+					}
 					if(impcon[9] == 0)//замена блокировки аккаунта
 					{
 						if(data2[13] != impdata[9])
@@ -36602,6 +36701,7 @@ public RepairCar()
 							}
 							if(impdata[9] == 0)//аккаунт разблокирован
 							{
+								data2[12] = 0;//отмена депортации
 								data2[13] = impdata[9];//сброс блокировки аккаунта
 								strdel(ssss, 0, 256);//сборка RCON-команды разбана
 								strcat(ssss, "unbanip ");
