@@ -1138,9 +1138,9 @@ public OnGameModeInit()
 	getdate(timecor[2], timecor[3], timecor[4]);
 	TimCor();//коррекция времени
 	DatCor();//коррекция даты
+	oldhour = timecor[0];
 	if(timecor[8] == 1)//если включено реальное время, то:
 	{
-		oldhour = timecor[0];
 		SetWorldTime(timecor[0]);
 		GlTime = timecor[0];
 	}
@@ -8356,6 +8356,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				print(string);
 				return 1;
 			}
+			new dopdata;
+			dopdata = 0;
+			if(perrt != timecor[8])
+			{
+			    dopdata = 1;
+			}
             timecor[8] = perrt;
 			CorTime[0] = per1;
 			CorTime[1] = per2;
@@ -8381,6 +8387,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			format(string,sizeof(string)," Время после коррекции: %02d:%02d %02d/%02d/%04d", timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
 			SendClientMessage(playerid, COLOR_GREEN, string);
 			SendClientMessage(playerid, COLOR_GREEN, "------------------------------------------------------------------------------------------");
+			if(dopdata == 1)
+			{
+			    oldhour = timecor[0] - 1;
+				if(oldhour < 0) { oldhour = oldhour + 2; }
+			}
 		}
 		else
 		{
@@ -35122,17 +35133,27 @@ public MinServ()//таймер минут на сервере
 			PlayerInfo[i][pMinlog]++;
 		}
 	}
-	if(timecor[8] == 1)//если включено реальное время, то:
+	ReadCorTime();//чтение коррекции времени
+	gettime(timecor[0], timecor[1]);
+	TimCor();//коррекция времени
+	if(oldhour != timecor[0])
 	{
-		ReadCorTime();//чтение коррекции времени
-		gettime(timecor[0], timecor[1]);
-		TimCor();//коррекция времени
-		if(oldhour != timecor[0])
+		oldhour = timecor[0];
+		SetWeather(1);//устанавливаем ID погоды на 1
+		GlWeat = 1;
+		SetGravity(0.008000);//устанавливаем гравитацию на 0.008
+		GlGrav = 0.008000;
+		if(timecor[8] == 1)//если включено реальное время, то:
 		{
-			oldhour = timecor[0];
 			SetWorldTime(timecor[0]);
 			GlTime = timecor[0];
 			TimePlay(timecor[0]);
+		}
+		else
+		{
+			SetWorldTime(12);
+			GlTime = 12;
+			TimePlay(12);
 		}
 	}
 
