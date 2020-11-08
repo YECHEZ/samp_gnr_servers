@@ -5038,10 +5038,18 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			new money;
 			money = strval(tmp);
 			if(money < 0) { SendClientMessage(playerid, COLOR_RED, " Сумма не может быть отрицательным числом !"); return 1; }
+			if(money == 0) { SendClientMessage(playerid, COLOR_RED, " Вы не указали сумму !"); return 1; }
 			if(GetPVarInt(playerid, "PlMon") < money) { SendClientMessage(playerid, COLOR_RED, " У Вас нет такой суммы."); return 1; }
-			new dopper44, dopper55;
+			new dopper44, dopper55, dopper77;
 			dopper44 = GetPVarInt(playerid, "PlMon");
 			dopper55 = GetPVarInt(playset, "PlMon");
+			dopper77 = dopper55 + money;
+			if(dopper77 < dopper55)
+			{
+				format(string, sizeof(string), " У игрока %s [%d] слишком большая сумма !", RealName[playset], playset);
+				SendClientMessage(playerid, COLOR_RED, string);
+				return 1;
+			}
 			SetPVarInt(playerid, "PlMon", GetPVarInt(playerid, "PlMon") - money);
 			SetPVarInt(playset, "PlMon", GetPVarInt(playset, "PlMon") + money);
 			format(string, sizeof(string), " Игрок %s [%d] передал игроку %s [%d] %d $", RealName[playerid], playerid, RealName[playset], playset, money);
