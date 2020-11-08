@@ -792,6 +792,7 @@ new Float:buscordz[BUS_MAX];
 new PickupID[BUS_MAX];//массив ИД пикапов
 new MapIconID[BUS_MAX];//массив ИД мап-иконок
 new Text3D:Nbus[BUS_MAX];//массив ИД 3D-текстов
+new busdlgcon[MAX_PLAYERS];//переменная контроля диалогов
 //---------------------------- End BusSystem -----------------------------------
 
 new ct9control[MAX_PLAYERS];//античит управления чужим транспортом
@@ -1775,6 +1776,7 @@ public OnPlayerConnect(playerid)
 	SetPlayerColor(playerid, ColorPlay[playerid]);
 
 //------------------------------ BusSystem -------------------------------------
+	busdlgcon[playerid] = 0;//обнуляем контроль диалогов
 	playspabs[playerid] = 0;//игрок не заспавнился
 	playIDbus[playerid] = -600;//не существующий ИД бизнеса для игрока
 //---------------------------- End BusSystem -----------------------------------
@@ -2236,6 +2238,7 @@ public OnPlayerDisconnect(playerid, reason)
 		}
 	}
 	playIDbus[playerid] = -600;//не существующий ИД бизнеса для игрока
+	busdlgcon[playerid] = 0;//обнуляем контроль диалогов
 //---------------------------- End BusSystem -----------------------------------
 
 	conconTD[playerid] = 0;//снятие блокировки создания текст-дравов при подключении игрока
@@ -27479,6 +27482,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			return 1;
 		}
 		SetPVarInt(playerid, "DlgCont", -600);//не существующий ИД диалога
+		busdlgcon[playerid]++;//контроль диалогов +1
 		playIDbus[playerid] = -600;//не существующий ИД бизнеса для игрока
 		return 1;
 	}
@@ -27490,6 +27494,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			return 1;
 		}
 		SetPVarInt(playerid, "DlgCont", -600);//не существующий ИД диалога
+		busdlgcon[playerid]++;//контроль диалогов +1
         if(response)
 		{
 			if(PlayerInfo[playerid][pVIP] == 3)
@@ -27573,6 +27578,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			return 1;
 		}
 		SetPVarInt(playerid, "DlgCont", -600);//не существующий ИД диалога
+		busdlgcon[playerid]++;//контроль диалогов +1
         if(response)
 		{
 			new para1;
@@ -34653,6 +34659,21 @@ public OneSecOnd()
 			{//обнуление задержки контроля игрока в тюрьме, если она НЕ равна нулю
 				prisoncount[i] = 0;
 			}
+//------------------------------ BusSystem -------------------------------------
+			if(busdlgcon[i] > 1)//если контроль диалогов больше 1, то:
+			{
+				PlayerInfo[i][pLock] = 1;//блокировка аккаунта игрока
+
+				format(string,sizeof(string),"* Игрок %s [%d] был забанен за чит (10), мешающий работе сервера !",RealName[i],i);
+				print(string);
+				SendClientMessageToAll(COLOR_RED,string);
+				strdel(fbanreason[i], 0, 256);//очистка причины бана
+				strcat(fbanreason[i], "* Чит (10), мешающий работе сервера.");
+				PlayBanList(i, fbanreason[i], 0);
+				SetTimerEx("PlayBan", 300, 0, "i", i);
+			}
+			busdlgcon[i] = 0;//обнуляем контроль диалогов
+//---------------------------- End BusSystem -----------------------------------
 #if (MOD4CINS == 0)
 			if(0 <= chatcon[i] <= 1 && 0 <= GetPVarInt(i, "CComAc0") <= 1 && 0 <= GetPVarInt(i, "CComAc1") <= 1 &&
 			0 <= GetPVarInt(i, "CComAc2") <= 1 && 0 <= GetPVarInt(i, "CComAc3") <= 1 && 0 <= GetPVarInt(i, "CComAc4") <= 1 &&
