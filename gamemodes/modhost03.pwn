@@ -29875,12 +29875,14 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		{
 			if(PlayerInfo[playerid][pVIP] == 3)
 			{
+				busdlgcon[playerid]--;//контроль диалогов -1
 				ShowPlayerDialog(playerid, 8000, 0, "Информация.", "{ADFF2F}Вы не можете купить бизнес,\nпока дело о Вашей депортации на слушании !", "OK", "");
 				SetPVarInt(playerid, "DlgCont", 8000);
 				return 1;
 			}
 			if(GetPVarInt(playerid, "PlMon") < buscost[playIDbus[playerid]])//если у игрока недостаточно денег, то:
 			{
+				busdlgcon[playerid]--;//контроль диалогов -1
 				ShowPlayerDialog(playerid, 8000, 0, "Информация.", "{ADFF2F}У Вас недостаточно денег для покупки этого бизнеса !", "OK", "");
 				SetPVarInt(playerid, "DlgCont", 8000);
 				return 1;
@@ -29894,6 +29896,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			{
 				format(string, sizeof(string), "{ADFF2F}У вас уже есть %d бизнеса !   Что бы купить этот бизнес -\
 				\nпродайте хотя бы один из своих существующих бизнесов !", para1);
+				busdlgcon[playerid]--;//контроль диалогов -1
 				ShowPlayerDialog(playerid, 8000, 0, "Информация.", string, "OK", "");
 				SetPVarInt(playerid, "DlgCont", 8000);
 				return 1;
@@ -29903,6 +29906,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 				SendClientMessage(playerid, 0xFF0000FF, " Этот бизнес уже принадлежит другому игроку !");
 				format(string, sizeof(string), "{ADFF2F}Название бизнеса: %s\nВладелец бизнеса: %s\nСтоимость бизнеса: %d $", busname[playIDbus[playerid]],
 				busplayname[playIDbus[playerid]], buscost[playIDbus[playerid]]);
+				busdlgcon[playerid]--;//контроль диалогов -1
 				ShowPlayerDialog(playerid, 8000, 0, "Информация.", string, "OK", "");
 				SetPVarInt(playerid, "DlgCont", 8000);
 				return 1;
@@ -37298,15 +37302,7 @@ public OneSecOnd()
 //------------------------------ BusSystem -------------------------------------
 			if(busdlgcon[i] > 1)//если контроль диалогов больше 1, то:
 			{
-				PlayerInfo[i][pLock] = 1;//блокировка аккаунта игрока
-
-				format(string,sizeof(string),"* Игрок %s [%d] был забанен за чит (10), мешающий работе сервера !",RealName[i],i);
-				print(string);
-				SendClientMessageToAll(COLOR_RED,string);
-				strdel(fbanreason[i], 0, 256);//очистка причины бана
-				strcat(fbanreason[i], "* Чит (10), мешающий работе сервера.");
-				PlayBanList(i, fbanreason[i], 0);
-				SetTimerEx("PlayBan", 300, 0, "i", i);
+				swper = 13;//чит активации пикапов
 			}
 			busdlgcon[i] = 0;//обнуляем контроль диалогов
 //---------------------------- End BusSystem -----------------------------------
@@ -37559,6 +37555,7 @@ public OneSecOnd()
 					case 11: format(string, sizeof(string), "* Игрок %s [%d] был кикнут - ошибка координат спавна !", aa333, i);
 #endif
 					case 12: format(string, sizeof(string), "* Игрок %s [%d] был кикнут - спавн без логирования !", aa333, i);
+					case 13: format(string, sizeof(string), "* Игрок %s [%d] был кикнут за чит (3), мешающий работе сервера !", aa333, i);
 				}
 				print(string);
 				SendClientMessageToAll(COLOR_RED, string);
