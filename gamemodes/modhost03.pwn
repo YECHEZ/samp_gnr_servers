@@ -33,6 +33,13 @@
 //                 //MOD4CINS 0 - БЕЗ авто-кика
 //                 //MOD4CINS 1 - С авто-киком
 
+#define MOD4DINS 0 //использование системы паспортов сервера:
+//                 //MOD4DINS 0 - БЕЗ паспортов
+//                 //MOD4DINS 1 - С 1 паспортом
+//                 //MOD4DINS 2 - С 2 паспортами
+//                 //MOD4DINS 3 - С 3 паспортами
+//                 //MOD4DINS 4 - С 4 паспортами
+
 #define MOD55INS 0 //режим резервного копирования сервер-лога: **
 //                 //MOD55INS 0 - БЕЗ резервного копирования
 //                 //MOD55INS 1 - С резервным копированием
@@ -45,6 +52,14 @@
 #define MOD77INS 1 //настройка команд /dataakk и /akksrc:
 //                 //MOD77INS 0 - БЕЗ использования команд /dataakk и /akksrc
 //                 //MOD77INS 1 - С использованием команд /dataakk и /akksrc
+
+#define MOD7AINS 1 //настройка команды /passrc:
+//                 //MOD7AINS 0 - БЕЗ использования команды /passrc
+//                 //MOD7AINS 1 - С использованием команды /passrc
+
+#define MOD7BINS 1 //настройка команды /scrnetv (просмотр действий сетевых экранов):
+//                 //MOD7BINS 0 - по умолчанию - выключен
+//                 //MOD7BINS 1 - по умолчанию - включен
 
 #define MOD90INS 0 //режим сохранения аккаунтов игроков: ***
 //                 //MOD90INS 0 - стандартная файловая система SA-MP (fopen)
@@ -68,7 +83,7 @@
 // файловой системы SA-MP (fopen) В локальную базу данных (SQLite) !!!
 
 // **** ВНИМАНИЕ !!! Для создания новой (пустой) базы данных аккаунтов игроков
-// измените настройку в строке 53 (MOD91INS 1) и включите (запустите) сервер.
+// измените настройку в строке 68 (MOD91INS 1) и включите (запустите) сервер.
 // После сообщения сервера (в сервер-логе) о создании новой (пустой) базы
 // данных аккаунтов игроков - выключите (закройте) сервер, и верните настройку
 // в строке 53 в нормальный режим работы сервера (MOD91INS 0) !!!
@@ -147,6 +162,14 @@
 	#undef MOD4CINS
 	#define MOD4CINS 1
 #endif
+#if (MOD4DINS < 0)
+	#undef MOD4DINS
+	#define MOD4DINS 0
+#endif
+#if (MOD4DINS > 4)
+	#undef MOD4DINS
+	#define MOD4DINS 4
+#endif
 #if (MOD55INS < 0)
 	#undef MOD55INS
 	#define MOD55INS 0
@@ -170,6 +193,22 @@
 #if (MOD77INS > 1)
 	#undef MOD77INS
 	#define MOD77INS 1
+#endif
+#if (MOD7AINS < 0)
+	#undef MOD7AINS
+	#define MOD7AINS 0
+#endif
+#if (MOD7AINS > 1)
+	#undef MOD7AINS
+	#define MOD7AINS 1
+#endif
+#if (MOD7BINS < 0)
+	#undef MOD7BINS
+	#define MOD7BINS 0
+#endif
+#if (MOD7BINS > 1)
+	#undef MOD7BINS
+	#define MOD7BINS 1
 #endif
 #if (MOD90INS < 0)
 	#undef MOD90INS
@@ -209,15 +248,6 @@
 #endif
 
 #define MAX_GANGS 600 //максимум банд + 2 (если 100 банд, то пишем 102 !!!)
-//----------------------------------------------------------------------
-// Чтобы система банд работала, создайте в папке сервера "scriptfiles"
-// папку "gangs", а в папке "gangs" - создайте папки "idgn" и "players"
-// ВНИМАНИЕ !!! В новой версии мода (после 24.11.2014) - папки "idgn"
-// и "players" в папке "gangs" создавать НЕ нужно, НО, если у Вас УЖЕ
-// есть файлы в папках "idgn" и "players", то мод сам (автоматически)
-// будет переносить данные из этих папок, по мере подключения уже
-// зарегистрированных игроков к серверу !!!
-//----------------------------------------------------------------------
 
 //------------------------------ BusSystem -------------------------------------
 #define BUS_MAX 100 //максимум бизнесов на сервере (от 1 до 300)
@@ -548,6 +578,8 @@ new idgangsave[MAX_PLAYERS];//ID банд для записи
 #define COLOR_LEMON 0xDDDD2357
 #define COLOR_BASIC 0x0066FFAA
 
+native gpci(playerid, buffer[], size);
+
 forward LevelUpdate();//drift bonus
 forward Drift();
 forward DriftCancellation(playerid);
@@ -795,6 +827,24 @@ new Text3D:Nbus[BUS_MAX];//массив ИД 3D-текстов
 new busdlgcon[MAX_PLAYERS];//переменная контроля диалогов
 //---------------------------- End BusSystem -----------------------------------
 
+new conopen222;//контроль коннекта к серверу
+new playconpass[MAX_PLAYERS];//номер текущего паспорта игрока
+new DB:scrnet1db;//переменная базы данных сетевого экрана 1 (прокси или VPN)
+new DBResult:qscrnet1db[MAX_PLAYERS + 1];//переменные запросов базы данных сетевого экрана 1 (прокси или VPN)
+new pergpcifirst[MAX_PLAYERS][64];//первичный gpci-тег
+new scrnetper[20][64];//массив ников админов для разрешения работы с сетевыми экранами
+new scrnet1mark;//указатель на текущую БД сетевого экрана 1
+new scrnet1b[4][MAX_PLAYERS + 1];//сетевой экран 1 (прокси или VPN)
+new scrnet1e[4][MAX_PLAYERS + 1];
+new scrnet2b[4][200];//сетевой экран 2 (локальные адреса)
+new scrnet2e[4][200];
+new scrnet2b123[200];//сетевой экран 2 (локальные адреса) данные для поиска
+new scrnet2e123[200];
+new scrnetnamegl[MAX_PLAYERS][20][64];//массив ников для сетевых экранов
+new scrnetpassgl[MAX_PLAYERS][20][64];//массив паспортов для сетевых экранов
+new scrnetcount[MAX_PLAYERS];//переменная контроля сетевых экранов
+new scrnetv[MAX_PLAYERS];//переменная просмотра действий сетевых экранов
+new condiscon[MAX_PLAYERS];//удалённое управление коннектом-дисконнектом
 new ct9control[MAX_PLAYERS];//античит управления чужим транспортом
 new ct9delay;
 new Float:ct9concord[3][4][MAX_PLAYERS];
@@ -814,6 +864,7 @@ new crash7count[MAX_PLAYERS];//контроль антикрашера - 7
 	new Float:crash7vz[MAX_PLAYERS];
 #endif
 new crash6[MAX_PLAYERS];//контроль антикрашера - 6
+new Float:angcrash6[MAX_PLAYERS];//антикрашер - 6
 new crash5count[MAX_PLAYERS];//контроль антикрашера - 5
 new dmcount44[MAX_PLAYERS];//маркер счётчика времени в DM-зонах
 new dmmoney[MAX_PLAYERS];//маркер денежного приза в DM-зонах
@@ -878,12 +929,11 @@ new Text3D:fantxt;//переменная для хранения 3D-текста с несущесвующим ИД
 #if (MOD90INS == 1)
 	new migration[MAX_PLAYERS];//переменные миграции аккаунтов ИЗ fopen В SQLite
 	new DB:playerdb;//переменная базы данных аккаунтов игроков
-	new DBResult:querydb[MAX_PLAYERS];//переменные запросов базы данных аккаунтов игроков
-	new DBResult:querydbau;//переменная запроса базы данных автоматического разбана
-	new EndConD;//дата последнего посещения сервера игроками
-	new EndConM;
-	new EndConY;
+	new DBResult:querydb[MAX_PLAYERS + 1];//переменные запросов базы данных аккаунтов игроков
 #endif
+new EndConD;//дата последнего посещения сервера игроками
+new EndConM;
+new EndConY;
 new Wind1SA;//переменные "окна" автосохранения аккаунтов
 new Wind2SA;
 new WWindSA;//ширина "окна" автосохранения аккаунтов
@@ -895,9 +945,6 @@ new Float:PlayCZ[MAX_PLAYERS];
 new PlayCINT[MAX_PLAYERS];
 new PlayCVW[MAX_PLAYERS];
 new PlayCRTP[MAX_PLAYERS];
-new locper33[MAX_PLAYERS];//переменные обхода авто-бана подключения двух (и более) игроков с одного и того же IP
-new locper44[MAX_PLAYERS];
-new clipip[MAX_PLAYERS][64];
 new ipper44[MAX_PLAYERS][4][32];//массив для команды /openip
 new OpenIP22[40];//массив максимумов подключений с заданного IP-адреса (обход авто-бана подключения двух (и более) игроков с одного и того же IP)
 new OpenIP[40][256];//массив IP-адресов (обход авто-бана подключения двух (и более) игроков с одного и того же IP)
@@ -957,9 +1004,7 @@ new SnowONOFF[MAX_PLAYERS];//переменная снега 2
 new nucexplos;//переменная ядерного взрыва
 new nucexptime;//переменная таймера ядерного взрыва
 new perfrost[MAX_PLAYERS];//переменная заморозки
-new locper1[MAX_PLAYERS];//вспомогательная переменная IP вышедшего игрока
-new locper2[MAX_PLAYERS];//вспомогательная переменная IP вышедшего игрока
-new twoIP[MAX_PLAYERS][126];//переменная для IP вышедшего игрока
+new twoIP[MAX_PLAYERS][128];//переменная для IP вышедшего игрока
 new playspa[MAX_PLAYERS];//переменная спавна игрока
 new LogAdm[100][256];//переменная регистрации админов
 new LogAdmcnt[MAX_PLAYERS];//переменная регистрации админов-2
@@ -1037,6 +1082,7 @@ new restart;
 new Float:TpDestA[MAX_PLAYERS][4];
 new TpPosA[MAX_PLAYERS][2];
 new Float:TpDestP[MAX_PLAYERS][4];
+new TpPosP[MAX_PLAYERS];
 new timeobject;
 new timeobject22;
 //new caravto[MAX_PLAYERS];
@@ -1059,9 +1105,9 @@ new Float:SavedPos[MAX_PLAYERS][Pos];
 
 enum pInfo
 {
-	pKey[128],
-	pTDReg[256],
-	pIPAdr[126],
+	pKey[64],
+	pTDReg[64],
+	pIPAdr[128],
 	pMinlog,
 	pAdmin,
 	pAdmshad,
@@ -1074,7 +1120,7 @@ enum pInfo
 	pKills,
 	pDeaths,
  	pVIP,
- 	pLock
+ 	pLock,
 // 	pPISTOL,
 //	pPISTOL_SILENCED,
 //	pDESERT_EAGLE,
@@ -1086,8 +1132,114 @@ enum pInfo
 //	pAK47,
 //	pM4,
 //	pSNIPERRIFLE
+ 	pPass_data1[64],
+ 	pPass_inout1[64],
+ 	pPass_ver1[32],
+ 	pPass_count1,
+ 	pPass_data2[64],
+ 	pPass_inout2[64],
+ 	pPass_ver2[32],
+ 	pPass_count2,
+ 	pPass_data3[64],
+ 	pPass_inout3[64],
+ 	pPass_ver3[32],
+ 	pPass_count3,
+ 	pPass_data4[64],
+ 	pPass_inout4[64],
+ 	pPass_ver4[32],
+ 	pPass_count4,
+ 	pPassMode,
+ 	pPassDel,
+ 	pPassLock,
+ 	pPassError
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
+
+new dAccName[MAX_PLAYERS + 1][64];
+
+enum aData
+{
+	dKey[32],
+	dTDReg[32],
+	dEndConD,
+	dEndConM,
+	dEndConY,
+	dIPAdr[128],
+	dMinlog,
+	dAdmin,
+	dAdmshad,
+	dAdmlive,
+	dReg,
+	dPrison,
+	dPrisonsec,
+	dMuted,
+	dMutedsec,
+	dMoney,
+	dKills,
+	dDeaths,
+ 	dVIP,
+ 	dLock,
+	dGang,
+	dGangLvl,
+// 	dPISTOL,
+//	dPISTOL_SILENCED,
+//	dDESERT_EAGLE,
+//	dSHOTGUN,
+//	dSAWNOFF_SHOTGUN,
+//	dSPAS12_SHOTGUN,
+//	dMICRO_UZI,
+//	dMP5,
+//	dAK47,
+//	dM4,
+//	dSNIPERRIFLE
+	dWeapon_slot0,
+	dWeapon_slot1,
+	dWeapon_slot2,
+	dWeapon_slot3,
+	dWeapon_slot4,
+	dWeapon_slot5,
+	dWeapon_slot6,
+	dWeapon_slot7,
+	dWeapon_slot8,
+	dWeapon_slot9,
+	dWeapon_slot10,
+	dWeapon_slot11,
+	dWeapon_slot12,
+	dAmmo_slot0,
+	dAmmo_slot1,
+	dAmmo_slot2,
+	dAmmo_slot3,
+	dAmmo_slot4,
+	dAmmo_slot5,
+	dAmmo_slot6,
+	dAmmo_slot7,
+	dAmmo_slot8,
+	dAmmo_slot9,
+	dAmmo_slot10,
+	dAmmo_slot11,
+	dAmmo_slot12,
+ 	dPass_data1[64],
+ 	dPass_inout1[64],
+ 	dPass_ver1[32],
+ 	dPass_count1,
+ 	dPass_data2[64],
+ 	dPass_inout2[64],
+ 	dPass_ver2[32],
+ 	dPass_count2,
+ 	dPass_data3[64],
+ 	dPass_inout3[64],
+ 	dPass_ver3[32],
+ 	dPass_count3,
+ 	dPass_data4[64],
+ 	dPass_inout4[64],
+ 	dPass_ver4[32],
+ 	dPass_count4,
+ 	dPassMode,
+ 	dPassDel,
+ 	dPassLock,
+ 	dPassError
+};
+new admData[MAX_PLAYERS + 1][aData];
 
 //---------------- замена стандартной функции SetPlayerSkin --------------------
 //-------------------- на её прототип S_SetPlayerSkin --------------------------
@@ -1356,6 +1508,7 @@ public OnGameModeInit()
 		playspa[i] = 0;//обнуление переменных спавна игроков
 		mapiconid[i] = -600;//очистка ID мап иконок наблюдения
 		ct9control[i] = 0;
+		condiscon[i] = 0;
 	}
 	ct9delay = 0;
 
@@ -1387,6 +1540,52 @@ public OnGameModeInit()
 			PlayerTextDrawSetShadow(i,dmdeathTD[i],1);
 		}
 	}
+
+	ScrNetPerLoad();//чтение per-файла
+	ScrNet1LoadMark();//чтение указателя на текущую БД сетевого экрана 1
+	if(scrnet1mark == 1)//если указатель = 1, то: текущая БД: _scrnet11.db
+	{
+		print("[scrnet] Текущая БД сетевого экрана 1 : _scrnet11.db .");
+		if(!fexist("data/scrnet1/_scrnet11.db"))//если нет файла базы данных сетевого экрана 1, то:
+		{
+			scrnet1db = db_open("data/scrnet1/_scrnet11.db");//подключаем базу данных сетевого экрана 1 к серверу
+			new strdln[1000];
+			format(strdln, sizeof(strdln), "CREATE TABLE _scrnet1 (IDCopy INTEGER,NumSt INTEGER,Active INTEGER,");//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sSN1b1 INTEGER,SN1b2 INTEGER,SN1b3 INTEGER,SN1b4 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sSN1e1 INTEGER,SN1e2 INTEGER,SN1e3 INTEGER,SN1e4 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sSN1b123 INTEGER,SN1e123 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sNameAdm VARCHAR(64))", strdln);
+			db_query(scrnet1db, strdln);//отправляем запрос на создание новой (пустой) БД сетевого экрана 1
+			SetTimer("dbScrNet2", 1000, 0);
+		}
+		else//иначе, если файл базы данных сетевого экрана 1 есть, то:
+		{
+			scrnet1db = db_open("data/scrnet1/_scrnet11.db");//подключаем базу данных сетевого экрана 1 к серверу
+			SetTimer("dbScrNet1", 1000, 0);
+		}
+	}
+	if(scrnet1mark == 2)//если указатель = 2, то: текущая БД: _scrnet12.db
+	{
+		print("[scrnet] Текущая БД сетевого экрана 1 : _scrnet12.db .");
+		if(!fexist("data/scrnet1/_scrnet12.db"))//если нет файла базы данных сетевого экрана 1, то:
+		{
+			scrnet1db = db_open("data/scrnet1/_scrnet12.db");//подключаем базу данных сетевого экрана 1 к серверу
+			new strdln[1000];
+			format(strdln, sizeof(strdln), "CREATE TABLE _scrnet1 (IDCopy INTEGER,NumSt INTEGER,Active INTEGER,");//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sSN1b1 INTEGER,SN1b2 INTEGER,SN1b3 INTEGER,SN1b4 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sSN1e1 INTEGER,SN1e2 INTEGER,SN1e3 INTEGER,SN1e4 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sSN1b123 INTEGER,SN1e123 INTEGER,", strdln);
+			format(strdln, sizeof(strdln), "%sNameAdm VARCHAR(64))", strdln);
+			db_query(scrnet1db, strdln);//отправляем запрос на создание новой (пустой) БД сетевого экрана 1
+			SetTimer("dbScrNet2", 1000, 0);
+		}
+		else//иначе, если файл базы данных сетевого экрана 1 есть, то:
+		{
+			scrnet1db = db_open("data/scrnet1/_scrnet12.db");//подключаем базу данных сетевого экрана 1 к серверу
+			SetTimer("dbScrNet1", 1000, 0);
+		}
+	}
+	ScrNet2Load();//чтение сетевого экрана 2
 
 	timpolsec = SetTimer("PolSec", 443, 1);//вспомогательный таймер 450 мс
 	autorepaircar = SetTimer("RepairCar", 1987, 1);
@@ -1478,6 +1677,36 @@ public OnGameModeInit()
 	AddPlayerClass(287,2497.3, -1666.5, 13.34, 0,0,0,0,0,0,0);
 	AddPlayerClass(288,2497.3, -1666.5, 13.34, 0,0,0,0,0,0,0);
 
+	return 1;
+}
+
+forward dbScrNet1();
+public dbScrNet1()
+{
+	conopen222 = 1;//подключение коннекта к серверу
+	return 1;
+}
+
+forward dbScrNet2();
+public dbScrNet2()
+{
+	db_close(scrnet1db);//отключаем базу данных сетевого экрана 1 от сервера
+	SetTimer("dbScrNet3", 1000, 0);
+	return 1;
+}
+
+forward dbScrNet3();
+public dbScrNet3()
+{
+	if(scrnet1mark == 1)//если указатель = 1, то: текущая БД: _scrnet11.db
+	{
+		scrnet1db = db_open("data/scrnet1/_scrnet11.db");//подключаем базу данных сетевого экрана 1 к серверу
+	}
+	if(scrnet1mark == 2)//если указатель = 2, то: текущая БД: _scrnet12.db
+	{
+		scrnet1db = db_open("data/scrnet1/_scrnet12.db");//подключаем базу данных сетевого экрана 1 к серверу
+	}
+	SetTimer("dbScrNet1", 1000, 0);
 	return 1;
 }
 
@@ -1684,6 +1913,9 @@ public OnGameModeExit()
 		fileClose(outLog);//закрываем резервную копию сервер-лога
 #endif
 
+		conopen222 = 0;//отключение коннекта к серверу
+		db_close(scrnet1db);//отключаем базу данных сетевого экрана 1 от сервера
+
 #if (MOD90INS == 1)
 		db_close(playerdb);//отключаем базу данных аккаунтов игроков от сервера
 #endif
@@ -1707,8 +1939,29 @@ public OnPlayerRequestClass(playerid, classid)
 #endif
 }
 
+forward FnRemConDiscon(playerid);
+public FnRemConDiscon(playerid)
+{
+	condiscon[playerid] = 1;
+	SetTimerEx("FnRemConDiscon22", 150, 0, "i", playerid);
+	return 1;
+}
+
+forward FnRemConDiscon22(playerid);
+public FnRemConDiscon22(playerid)
+{
+	condiscon[playerid] = 0;
+	return 1;
+}
+
 public OnPlayerConnect(playerid)
 {
+	if(conopen222 == 0)//если коннект к серверу отключен, то:
+	{
+		SetTimerEx("PlayKick", 100, 0, "i", playerid);//кик игрока
+		return 1;
+	}
+
 #if (MOD4CINS == 0)
 	if(functioncon[playerid] < 0)//если счётчик секунд меньше нуля, то:
 	{
@@ -1720,6 +1973,347 @@ public OnPlayerConnect(playerid)
 	}
 #endif
 	functioncon[playerid]++;//прибавляем 1 к контрольной переменной функций
+
+	playconpass[playerid] = 0;//текущий паспорт = 0
+	new locerrind = 0;//обнуляем индекс ошибки
+	new ip[128];
+	GetPlayerIp(playerid, ip, sizeof(ip));
+	PlayerInfo[playerid][pIPAdr] = ip;
+
+	new locipip[4];//разделённый по группам IP-адрес
+	if(FnIPCon(PlayerInfo[playerid][pIPAdr], locipip) == 0)//если ошибка IP-адреса, то:
+	{
+		locerrind = 1;//устанавливаем индекс ошибки 1
+	}
+
+    new pname[MAX_PLAYER_NAME];
+	new string[256];
+	GetPlayerName(playerid,pname,sizeof(pname));
+	strdel(RealName[playerid],0,MAX_PLAYER_NAME);//очистить реальный ник игрока
+	new aa333[64];//доработка для использования Русских ников
+	format(aa333, sizeof(aa333), "%s", pname);//доработка для использования Русских ников
+	strcat(RealName[playerid], aa333);//запомнить реальный ник игрока (доработка для использования Русских ников)
+//	strcat(RealName[playerid], pname);//запомнить реальный ник игрока
+
+	if(strlen(RealName[playerid]) > 25 || InpNameControl(RealName[playerid]) == 0)//если ошибка ника, то:
+	{
+		locerrind = 2;//устанавливаем индекс ошибки 2
+	}
+
+	new loctag[64];
+	gpci(playerid, loctag, sizeof(loctag));//чтение gpci-тега
+
+	if(FngpciControl(loctag) == 0)//если ошибка gpci-тега, то:
+	{
+		locerrind = 3;//устанавливаем индекс ошибки 3
+	}
+	else
+	{
+		Maskgpci(loctag);
+		strdel(pergpcifirst[playerid], 0, 64);
+		strcat(pergpcifirst[playerid], loctag);
+	}
+
+	if(locerrind != 0 && condiscon[playerid] == 0)//если был установлен индекс ошибки, то:
+	{
+		printf("* Игрок %s [%d] был отсоединён - ошибка %d входных данных !", RealName[playerid], playerid, locerrind);
+		FnRemConDiscon(playerid);
+		SetTimerEx("PlayKick", 100, 0, "i", playerid);//кик игрока
+		return 1;
+	}
+
+	new locipip22;//собираем из IP-адреса данные - для поиска в сетевых экранах
+	locipip22 = (locipip[0] * 65536) + (locipip[1] * 256) + locipip[2];
+	scrnetcount[playerid] = 0;//обнуляем переменную контроля сетевых экранов
+#if (MOD7BINS == 0)
+	scrnetv[playerid] = 0;//сбрасываем переменную просмотра действий сетевых экранов
+#endif
+#if (MOD7BINS == 1)
+	scrnetv[playerid] = 1;//устанавливаем переменную просмотра действий сетевых экранов
+#endif
+	new locind1 = 0;//обнуляем индекс поиска в БД
+	new locmark1 = 0;//обнуляем маркер определения IP
+	new locind2;//индекс слотов
+	new nmf[128], npf, str22[64], scrnetname[64], scrnetpass[64];
+
+	new strdln[1000];//сетевой экран 1
+	format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (Active = 1 ");//создаём запрос БД
+	format(strdln, sizeof(strdln), "%sAND %d >= SN1b123 AND %d <= SN1e123)", strdln, locipip22, locipip22);
+	qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+	locind1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+	if(locind1 != 0)//если в БД была найдена хотя бы одна строка, то:
+	{
+		new buffer[64], locdata1[3];
+		locind2 = 0;//обнуляем индекс слотов
+		while(locind2 < locind1)
+		{
+			db_get_field(qscrnet1db[playerid], 1, buffer, 64); locdata1[0] = strval(buffer);//NumSt
+			db_get_field(qscrnet1db[playerid], 6, buffer, 64); scrnet1b[3][playerid] = strval(buffer);//SN1b4
+			db_get_field(qscrnet1db[playerid], 10, buffer, 64); scrnet1e[3][playerid] = strval(buffer);//SN1e4
+			db_get_field(qscrnet1db[playerid], 11, buffer, 64); locdata1[1] = strval(buffer);//SN1b123
+			db_get_field(qscrnet1db[playerid], 12, buffer, 64); locdata1[2] = strval(buffer);//SN1e123
+			if(locipip22 == locdata1[1] && locipip22 == locdata1[2])
+			{//если IP-адрес равен начальному И конечному значению из БД, то:
+				if(locipip[3] >= scrnet1b[3][playerid] && locipip[3] <= scrnet1e[3][playerid])
+				{//если 4-я группа IP-адреса входит в диапазон значений из БД, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 == locdata1[1] && locipip22 < locdata1[2])
+			{//если IP-адрес равен начальному значению из БД, И меньше конечного значения из БД, то:
+				if(locipip[3] >= scrnet1b[3][playerid])
+				{//если 4-я группа IP-адреса больше или равна начальному значению из БД, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 > locdata1[1] && locipip22 == locdata1[2])
+			{//если IP-адрес больше начального значения из БД, И равен конечному значению из БД, то:
+				if(locipip[3] <= scrnet1e[3][playerid])
+				{//если 4-я группа IP-адреса меньше или равна конечному значению из БД, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 > locdata1[1] && locipip22 < locdata1[2])
+			{//если IP-адрес больше начального значения из БД, И меньше конечного значения из БД, то:
+				locmark1 = 1;//устанавливаем маркер определения IP
+				break;//завершаем цикл
+			}
+			if(locind1 != 1)//если в БД было найдено больше одной строки, то:
+			{
+				db_next_row(qscrnet1db[playerid]);///переходим к следующей строке результат запроса БД
+			}
+			locind2++;//индекс слотов +1
+		}
+		locind1 = locdata1[0];//копируем номер записи из БД во внешнюю переменную
+	}
+	db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+	if(locmark1 == 1)//если маркер определения IP установлен, то:
+	{
+		locind2 = 0;//обнуляем индекс слотов
+		locmark1 = 2;//делаем отметку, что ник НЕ определён
+		format(nmf, sizeof(nmf), "data/scrnet1/np1%05d.ini", locind1);
+		if(fexist(nmf))//если файл существует, то:
+		{
+			npf = ini_openFile(nmf);//читаем файл
+			if(npf >= 0)
+			{
+				while(locind2 < 20)//проверка на разрешённые ники-паспорта в сетевом экране 1
+				{
+					strdel(scrnetname, 0, 64);
+					format(str22, 64, "Name1%02d", locind2);
+				    ini_getString(npf, str22, scrnetname);
+					if(strlen(scrnetname) == 0)//если прочитана пустая строка (за место ника), то:
+					{
+						strcat(scrnetname, "*** INV_PL_ID");//записываем в слот несуществующий ник
+					}
+					else//иначе, если прочитана НЕ пустая строка, то:
+					{
+						if(strlen(scrnetname) > 25 || InpNameControl(scrnetname) == 0)//если ник содержит ошибки, то:
+						{
+							strdel(scrnetname, 0, 64);//очищаем слот
+							strcat(scrnetname, "*** INV_PL_ID");//записываем в слот несуществующий ник
+						}
+					}
+					strdel(scrnetpass, 0, 64);
+					format(str22, 64, "Pass1%02d", locind2);
+				    ini_getString(npf, str22, scrnetpass);
+					if(strlen(scrnetpass) == 0)//если прочитана пустая строка (за место паспорта), то:
+					{
+						strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+					}
+					else//иначе, если прочитана НЕ пустая строка, то:
+					{
+						if(FngpciControl(scrnetpass) == 0)//если паспорт содержит ошибки, то:
+						{
+							strdel(scrnetpass, 0, 64);//очищаем слот
+							strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+						}
+					}
+					if(scrnetname[0] == 42 && scrnetpass[0] != 42)
+					{//если нет ника, но есть паспорт, то:
+						strdel(scrnetpass, 0, 64);//очищаем слот
+						strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+					}
+					if(scrnetpass[0] == 42)//если нет паспорта, то: проверка на ник
+					{
+						if(strcmp(RealName[playerid], scrnetname, false) == 0)
+						{//если ник был найден, то:
+							scrnetcount[playerid] = 30;//устанавливаем переменную контроля сетевых экранов
+							printf("[scrnet] >> Игрок %s [%d] обход >> sn1-запись %d , np1-слот %d , ник.", RealName[playerid], playerid, locind1, locind2);
+							locmark1 = 3;//делаем отметку, что ник определён
+							break;//завершаем цикл
+						}
+					}
+					else//иначе - проверка на паспорт
+					{
+						if(strcmp(pergpcifirst[playerid], scrnetpass, false) == 0)
+						{//если паспорт был найден, то:
+							scrnetcount[playerid] = 30;//устанавливаем переменную контроля сетевых экранов
+							printf("[scrnet] >> Игрок %s [%d] обход >> sn1-запись %d , np1-слот %d , паспорт.", RealName[playerid], playerid, locind1, locind2);
+							locmark1 = 3;//делаем отметку, что паспорт определён
+							break;//завершаем цикл
+						}
+					}
+					locind2++;//индекс слотов + 1
+				}
+				ini_closeFile(npf);//закрываем файл
+			}
+		}
+	}
+	if(locmark1 == 2 && condiscon[playerid] == 0)//если есть отметка, что ник НЕ определён, то:
+	{
+        if(GetPVarInt(playerid, "ReDirScrnet1") == 0)
+		{//если перенаправление действия для сетевого экрана 1 НЕ активно, то:
+			format(string, sizeof(string), "[scrnet] Игрок %s [%d] был отсоединён - сетевой экран 1 , запись %d", RealName[playerid], playerid, locind1);
+			print(string);
+			SendAdminMessage22(COLOR_RED, string, 2, 0);
+			FnRemConDiscon(playerid);
+			SetTimerEx("PlayKick", 100, 0, "i", playerid);
+			return 1;
+		}
+		else//иначе, если перенаправление действия для сетевого экрана 1 активно, то:
+		{
+			format(string, sizeof(string), "[scrnet] Игрок %s [%d] обнаружен в сетевом экране 1 , запись %d", RealName[playerid], playerid, locind1);
+			print(string);
+			SendAdminMessage22(COLOR_YELLOW, string, 2, 0);
+			CallRemoteFunction("Scrnet1RmtCon", "d", playerid);//перенаправляем действие для сетевого экрана 1
+		}
+	}
+	locind1 = 0;//обнуляем индекс слотов
+	locmark1 = 0;//обнуляем маркер определения IP
+	while(locind1 < 200)//сетевой экран 2
+	{
+		if(locipip22 >= scrnet2b123[locind1] && locipip22 <= scrnet2e123[locind1])
+		{
+			if(locipip22 == scrnet2b123[locind1] && locipip22 == scrnet2e123[locind1])
+			{//если IP-адрес равен начальному И конечному значению, то:
+				if(locipip[3] >= scrnet2b[3][locind1] && locipip[3] <= scrnet2e[3][locind1])
+				{//если 4-я группа IP-адреса входит в диапазон значений, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 == scrnet2b123[locind1] && locipip22 < scrnet2e123[locind1])
+			{//если IP-адрес равен начальному значению, И меньше конечного значения, то:
+				if(locipip[3] >= scrnet2b[3][locind1])
+				{//если 4-я группа IP-адреса больше или равна начальному значению, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 > scrnet2b123[locind1] && locipip22 == scrnet2e123[locind1])
+			{//если IP-адрес больше начального значения, И IP-адрес равен конечному значению, то:
+				if(locipip[3] <= scrnet2e[3][locind1])
+				{//если 4-я группа IP-адреса меньше или равна конечному значению, то:
+					locmark1 = 1;//устанавливаем маркер определения IP
+					break;//завершаем цикл
+				}
+			}
+			if(locipip22 > scrnet2b123[locind1] && locipip22 < scrnet2e123[locind1])
+			{//если IP-адрес больше начального значения, И меньше конечного значения, то:
+				locmark1 = 1;//устанавливаем маркер определения IP
+				break;//завершаем цикл
+			}
+		}
+		locind1++;//индекс слотов + 1
+	}
+	if(locmark1 == 1)//если маркер определения IP установлен, то:
+	{
+		locind2 = 0;//обнуляем индекс слотов
+		locmark1 = 2;//делаем отметку, что ник НЕ определён
+		format(nmf, sizeof(nmf), "data/scrnet2/np2%03d.ini", locind1);
+		if(fexist(nmf))//если файл существует, то:
+		{
+			npf = ini_openFile(nmf);//читаем файл
+			if(npf >= 0)
+			{
+				while(locind2 < 20)//проверка на разрешённые ники-паспорта в сетевом экране 2
+				{
+					strdel(scrnetname, 0, 64);
+					format(str22, 64, "Name2%02d", locind2);
+				    ini_getString(npf, str22, scrnetname);
+					if(strlen(scrnetname) == 0)//если прочитана пустая строка (за место ника), то:
+					{
+						strcat(scrnetname, "*** INV_PL_ID");//записываем в слот несуществующий ник
+					}
+					else//иначе, если прочитана НЕ пустая строка, то:
+					{
+						if(strlen(scrnetname) > 25 || InpNameControl(scrnetname) == 0)//если ник содержит ошибки, то:
+						{
+							strdel(scrnetname, 0, 64);//очищаем слот
+							strcat(scrnetname, "*** INV_PL_ID");//записываем в слот несуществующий ник
+						}
+					}
+					strdel(scrnetpass, 0, 64);
+					format(str22, 64, "Pass2%02d", locind2);
+				    ini_getString(npf, str22, scrnetpass);
+					if(strlen(scrnetpass) == 0)//если прочитана пустая строка (за место паспорта), то:
+					{
+						strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+					}
+					else//иначе, если прочитана НЕ пустая строка, то:
+					{
+						if(FngpciControl(scrnetpass) == 0)//если паспорт содержит ошибки, то:
+						{
+							strdel(scrnetpass, 0, 64);//очищаем слот
+							strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+						}
+					}
+					if(scrnetname[0] == 42 && scrnetpass[0] != 42)
+					{//если нет ника, но есть паспорт, то:
+						strdel(scrnetpass, 0, 64);//очищаем слот
+						strcat(scrnetpass, "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+					}
+					if(scrnetpass[0] == 42)//если нет паспорта, то: проверка на ник
+					{
+						if(strcmp(RealName[playerid], scrnetname, false) == 0)
+						{//если был найден ник, то:
+							scrnetcount[playerid] = 30;//устанавливаем переменную контроля сетевых экранов
+							printf("[scrnet] >> Игрок %s [%d] обход >> sn2-слот %d , np2-слот %d , ник.", RealName[playerid], playerid, locind1, locind2);
+							locmark1 = 3;//делаем отметку, что ник определён
+							ini_closeFile(npf);//закрываем файл
+							break;//завершаем цикл
+						}
+					}
+					else//иначе - проверка на паспорт
+					{
+						if(strcmp(pergpcifirst[playerid], scrnetpass, false) == 0)
+						{//если был найден паспорт, то:
+							scrnetcount[playerid] = 30;//устанавливаем переменную контроля сетевых экранов
+							printf("[scrnet] >> Игрок %s [%d] обход >> sn2-слот %d , np2-слот %d , паспорт.", RealName[playerid], playerid, locind1, locind2);
+							locmark1 = 3;//делаем отметку, что паспорт определён
+							ini_closeFile(npf);//закрываем файл
+							break;//завершаем цикл
+						}
+					}
+					locind2++;//индекс слотов + 1
+				}
+				ini_closeFile(npf);//закрываем файл
+			}
+		}
+	}
+	if(locmark1 == 2 && condiscon[playerid] == 0)//если есть отметка, что ник НЕ определён, то:
+	{
+        if(GetPVarInt(playerid, "ReDirScrnet2") == 0)
+		{//если перенаправление действия для сетевого экрана 2 НЕ активно, то:
+			format(string, sizeof(string), "[scrnet] Игрок %s [%d] был отсоединён - сетевой экран 2 , слот %d", RealName[playerid], playerid, locind1);
+			print(string);
+			SendAdminMessage22(COLOR_RED, string, 2, 0);
+			FnRemConDiscon(playerid);
+			SetTimerEx("PlayKick", 100, 0, "i", playerid);
+			return 1;
+		}
+		else//иначе, если перенаправление действия для сетевого экрана 2 активно, то:
+		{
+			format(string, sizeof(string), "[scrnet] Игрок %s [%d] обнаружен в сетевом экране 2 , слот %d", RealName[playerid], playerid, locind1);
+			print(string);
+			SendAdminMessage22(COLOR_YELLOW, string, 2, 0);
+			CallRemoteFunction("Scrnet2RmtCon", "d", playerid);//перенаправляем действие для сетевого экрана 2
+		}
+	}
 
 	if(conconTD[playerid] == 0)
 	{//если создание текст-дравов НЕ заблокировано, то:
@@ -1771,7 +2365,6 @@ public OnPlayerConnect(playerid)
 	SetPVarInt(playerid, "PlGLvl", GangLvl[playerid]);//глобальная переменная Lvl игрока в банде
 	tgang[playerid] = -1600;
 
-    new pname[MAX_PLAYER_NAME];
 	SetPVarInt(playerid, "DlgCont", -600);//глобальная переменная ИДа диалога
 #if (MOD66INS > 1)
 	playspacount[playerid] = 0;//задержка контроля игрока на ошибку координат спавна
@@ -1779,10 +2372,6 @@ public OnPlayerConnect(playerid)
 #endif
 	playlogcount[playerid] = 0;//задержка контроля игрока на спавн без логирования
 	playspa[playerid] = 0;//переменная спавна игрока
-
-	new ip[126];
-	GetPlayerIp(playerid, ip, sizeof(ip));
-	PlayerInfo[playerid][pIPAdr] = ip;
 
 #if (MOD90INS == 1)
 	migration[playerid] = 0;//обнулить режим миграции аккаунта
@@ -1813,7 +2402,7 @@ public OnPlayerConnect(playerid)
 	passrcon[playerid] = 0;//бан взлома RCON-пароля
 	oneminkick[playerid] = 0;//кик - если не заспавнился
 	countdown[playerid] = -1;//очистка обратного отсчёта
-	strdel(PlayerInfo[playerid][pTDReg], 0, 256);//очистка времени и даты регистрации
+	strdel(PlayerInfo[playerid][pTDReg], 0, 64);//очистка времени и даты регистрации
 	strdel(fbanreason[playerid], 0, 256);//очистка причины бана
     gPlayerLogTries[playerid] = 0;
     gPlayerLogged[playerid] = 0;
@@ -1825,6 +2414,27 @@ public OnPlayerConnect(playerid)
 	SetPVarInt(playerid, "AdmLvl", PlayerInfo[playerid][pAdmin]);//записываем в глобальную переменную уровень админки
 	PlayerInfo[playerid][pAdmshad] = 0;//переменная скрытого админа
     PlayerInfo[playerid][pLock] = 0;
+
+	strmid(PlayerInfo[playerid][pPass_data1], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_inout1], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_ver1], "---", 0, 3, 32);
+	PlayerInfo[playerid][pPass_count1] = 0;
+	strmid(PlayerInfo[playerid][pPass_data2], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_inout2], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_ver2], "---", 0, 3, 32);
+	PlayerInfo[playerid][pPass_count2] = 0;
+	strmid(PlayerInfo[playerid][pPass_data3], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_inout3], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_ver3], "---", 0, 3, 32);
+	PlayerInfo[playerid][pPass_count3] = 0;
+	strmid(PlayerInfo[playerid][pPass_data4], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_inout4], "---", 0, 3, 64);
+	strmid(PlayerInfo[playerid][pPass_ver4], "---", 0, 3, 32);
+	PlayerInfo[playerid][pPass_count4] = 0;
+	PlayerInfo[playerid][pPassMode] = 0;
+	PlayerInfo[playerid][pPassDel] = 0;
+	PlayerInfo[playerid][pPassLock] = 0;
+	PlayerInfo[playerid][pPassError] = 0;
 
 	PlayerInfo[playerid][pPrison] = 0;
 	PlayerInfo[playerid][pPrisonsec] = 0;
@@ -1850,19 +2460,12 @@ public OnPlayerConnect(playerid)
 	ct9concord[2][3][playerid] = 0.0;
 
 	//вход на сервер
-	new string[256];
-	GetPlayerName(playerid,pname,sizeof(pname));
-	strdel(RealName[playerid],0,MAX_PLAYER_NAME);//очистить реальный ник игрока
-	new aa333[64];//доработка для использования Русских ников
-	format(aa333, sizeof(aa333), "%s", pname);//доработка для использования Русских ников
-	strcat(RealName[playerid], aa333);//запомнить реальный ник игрока (доработка для использования Русских ников)
-//	strcat(RealName[playerid], pname);//запомнить реальный ник игрока
-	if(GetPVarInt(playerid, "Ban2Mon") == 0)
+	if(condiscon[playerid] == 0)
 	{
 		format(string,sizeof(string),"* %s [%d] присоединился к серверу.",pname,playerid);
 		SendClientMessageToAll(COLOR_GREEN,string);
+		printf("* Игрок %s [%d] присоединился к серверу.",aa333,playerid);
 	}
-	printf("* Игрок %s [%d] присоединился к серверу.",aa333,playerid);
 	ColorPlay[playerid] = ColNick[17];//присвоить игроку серый цвет (до спавна)
 	SetPlayerColor(playerid, ColorPlay[playerid]);
 
@@ -1873,44 +2476,45 @@ public OnPlayerConnect(playerid)
 //---------------------------- End BusSystem -----------------------------------
 
 	exitcheat[playerid] = 0;//присоединившийся игрок - НЕ чит
-	locper1[playerid] = 0;
-	locper2[playerid] = 0;
-	locper33[playerid] = 0;//сборка шаблона IP-адреса игрока
-	locper44[playerid] = 0;
-	while(locper33[playerid] <= strlen(PlayerInfo[playerid][pIPAdr]))
+	new locper1 = 0;
+	new locper2 = 0;
+	new locper33 = 0;//сборка шаблона IP-адреса игрока
+	new locper44 = 0;
+	new clipip[128];
+	while(locper33 <= strlen(PlayerInfo[playerid][pIPAdr]))
 	{
-		if(PlayerInfo[playerid][pIPAdr][locper33[playerid]] == 46) { locper44[playerid]++; }
-		clipip[playerid][locper33[playerid]] = PlayerInfo[playerid][pIPAdr][locper33[playerid]];
-		locper33[playerid]++;
-		if(locper44[playerid] == 2) { break; }
+		if(PlayerInfo[playerid][pIPAdr][locper33] == 46) { locper44++; }
+		clipip[locper33] = PlayerInfo[playerid][pIPAdr][locper33];
+		locper33++;
+		if(locper44 == 2) { break; }
 	}
-	clipip[playerid][locper33[playerid]] = 42;
-	locper33[playerid]++;
-	clipip[playerid][locper33[playerid]] = 46;
-	locper33[playerid]++;
-	clipip[playerid][locper33[playerid]] = 42;
-	locper33[playerid]++;
-	clipip[playerid][locper33[playerid]] = 0;
-	locper33[playerid]++;
-	clipip[playerid][locper33[playerid]] = 0;
-	locper44[playerid] = 1;//устанавливаем максимум подключений для заданного IP-адреса = 1
+	clipip[locper33] = 42;
+	locper33++;
+	clipip[locper33] = 46;
+	locper33++;
+	clipip[locper33] = 42;
+	locper33++;
+	clipip[locper33] = 0;
+	locper33++;
+	clipip[locper33] = 0;
+	locper44 = 1;//устанавливаем максимум подключений для заданного IP-адреса = 1
 	for(new m = 0; m < 40; m++)//поиск IP-адреса игрока в IP-слотах
 	{
-		if((strcmp(PlayerInfo[playerid][pIPAdr], OpenIP[m], false) == 0 || strcmp(clipip[playerid], OpenIP[m], false) == 0) && strlen(OpenIP[m]) != 0)
+		if((strcmp(PlayerInfo[playerid][pIPAdr], OpenIP[m], false) == 0 || strcmp(clipip, OpenIP[m], false) == 0) && strlen(OpenIP[m]) != 0)
 		{//если IP-адреса игрока был найден в IP-слотах, то:
-			locper44[playerid] = OpenIP22[m];//запоминаем новый максимум подключений для заданного IP-адреса
+			locper44 = OpenIP22[m];//запоминаем новый максимум подключений для заданного IP-адреса
 		}
 	}
-	while (locper1[playerid] < MAX_PLAYERS)//цикл для всех игроков
+	while (locper1 < MAX_PLAYERS)//цикл для всех игроков
 	{
-		if(strcmp(PlayerInfo[playerid][pIPAdr], twoIP[locper1[playerid]], true) == 0 && strlen(twoIP[locper1[playerid]]) != 0)
+		if(strcmp(PlayerInfo[playerid][pIPAdr], twoIP[locper1], true) == 0 && strlen(twoIP[locper1]) != 0)
 		{//сравниваем IP игрока с IP вышедших игроков
-			locper2[playerid] = 1;
+			locper2 = 1;
 			break;
 		}
-		locper1[playerid]++;
+		locper1++;
 	}
-	if(locper2[playerid] == 1)
+	if(locper2 == 1 && condiscon[playerid] == 0)
 	{//если игрок зашёл меньше чем через 100 миллисекунд после своего выхода, то бан чита
 		exitcheat[playerid] = 1;//присоединившийся игрок - чит
 		print("[AntiCheatSys] ---------- 2 ----------");
@@ -1930,18 +2534,18 @@ public OnPlayerConnect(playerid)
 //		Ban(playerid);
 		return 1;
 	}
-	locper33[playerid] = 0;//контрольная переменная максимума подключений для заданного IP-адреса = 0
+	locper33 = 0;//контрольная переменная максимума подключений для заданного IP-адреса = 0
 	for(new k=0;k<MAX_PLAYERS;k++)//цикл для всех игроков
 	{
 		if(IsPlayerConnected(k))//дальнейшее выполняем если игрок в коннекте
 		{//сравниваем IP игрока с уже "подключенными" IP
 			if(strcmp(PlayerInfo[playerid][pIPAdr], PlayerInfo[k][pIPAdr], true) == 0)
 			{
-				locper33[playerid]++;//прибавляем 1 к контрольной переменной максимума подключений для заданного IP-адреса
+				locper33++;//прибавляем 1 к контрольной переменной максимума подключений для заданного IP-адреса
 			}
 		}
 	}
-	if(locper33[playerid] > locper44[playerid])
+	if(locper33 > locper44 && condiscon[playerid] == 0)
 	{//если число подключений для заданного IP-адреса больше допустимого максимума подключений, то бан чита
 		exitcheat[playerid] = 1;//присоединившийся игрок - чит
 		print("[AntiCheatSys] ---------- 1 ----------");
@@ -1961,6 +2565,7 @@ public OnPlayerConnect(playerid)
 //		Ban(playerid);
 		return 1;
 	}
+	condiscon[playerid] = 0;
 
 	scrmod[0][playerid] = 0;//переменная режимов экрана
 	scrmod[1][playerid] = 0;//переменная режимов экрана
@@ -2075,6 +2680,7 @@ public OnPlayerConnect(playerid)
 	TpDestP[playerid][1] = playspay[tpspa];
 	TpDestP[playerid][2] = playspaz[tpspa];
 	TpDestP[playerid][3] = playspaa[tpspa];
+	TpPosP[playerid] = 0;
 
 	for(new i=0;i<13;i++)//обнуление слотов оружия
 	{
@@ -2189,10 +2795,24 @@ public OnPlayerDisconnect(playerid, reason)
 //                              End GarHouse
 //==============================================================================
 
+	if(PlayerInfo[playerid][pPassLock] == 0)//если паспорт НЕ заблокирован, то:
+	{
+		gettime(timecor[0], timecor[1]);
+		getdate(timecor[2], timecor[3], timecor[4]);
+		TimCor();//коррекция времени
+		DatCor();//коррекция даты
+		switch(playconpass[playerid])//время и дата выхода
+		{
+		    case 0, 1: format(PlayerInfo[playerid][pPass_inout1], 64, "%s [%02d:%02d - %02d/%02d/%04d]", PlayerInfo[playerid][pPass_inout1], timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		    case 2: format(PlayerInfo[playerid][pPass_inout2], 64, "%s [%02d:%02d - %02d/%02d/%04d]", PlayerInfo[playerid][pPass_inout2], timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		    case 3: format(PlayerInfo[playerid][pPass_inout3], 64, "%s [%02d:%02d - %02d/%02d/%04d]", PlayerInfo[playerid][pPass_inout3], timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		    case 4: format(PlayerInfo[playerid][pPass_inout4], 64, "%s [%02d:%02d - %02d/%02d/%04d]", PlayerInfo[playerid][pPass_inout4], timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		}
+	}
     new string[256];
 	if(restrest == 0)//если нету рестарта сервера, то:
 	{
-		if(GetPVarInt(playerid, "Ban2Mon") == 0)
+		if(condiscon[playerid] == 0 && conopen222 == 1)
 		{
 			format(string,sizeof(string),"* %s [%d] вышел с сервера.",RealName[playerid],playerid);
 			switch(reason)
@@ -2214,7 +2834,7 @@ public OnPlayerDisconnect(playerid, reason)
 	}
 	else//иначе:
 	{
-		if(GetPVarInt(playerid, "Ban2Mon") == 0)
+		if(condiscon[playerid] == 0 && conopen222 == 1)
 		{
 			format(string,sizeof(string),"* %s [%d] вышел с сервера. (кик по рестарту)",RealName[playerid],playerid);
 			SendClientMessageToAll(COLOR_GREEN,string);
@@ -2335,7 +2955,6 @@ public OnPlayerDisconnect(playerid, reason)
 		if(buscount[j] == 1 && strcmp(RealName[playerid], busplayname[j], false) == 0)//если бизнес существует,
 		{//и это бизнес игрока, то:
 			busidplay[j] = -600;//даём бизнесу несуществующий ИД игрока
-			busmoney[j] = 0;//обнуляем счётчик минут бизнеса
 		}
 	}
 	playIDbus[playerid] = -600;//не существующий ИД бизнеса для игрока
@@ -2439,6 +3058,14 @@ public OnPlayerDisconnect(playerid, reason)
 	DeletePVar(playerid, "CComAc14");
 	DeletePVar(playerid, "CComAc15");
 	strdel(RealName[playerid],0,MAX_PLAYER_NAME);//очистить реальный ник игрока
+	scrnetcount[playerid] = 0;//обнуляем переменную контроля сетевых экранов
+#if (MOD7BINS == 0)
+	scrnetv[playerid] = 0;//сбрасываем переменную просмотра действий сетевых экранов
+#endif
+#if (MOD7BINS == 1)
+	scrnetv[playerid] = 1;//устанавливаем переменную просмотра действий сетевых экранов
+#endif
+	playconpass[playerid] = 0;//текущий паспорт = 0
 	ct9control[playerid] = 0;
 	DeletePVar(playerid, "PlCRct9");//удаляем глобальную переменную блокировки античита управления чужим транспортом
 	crash5count[playerid] = 0;//обнуляем контроль антикрашера - 5
@@ -2485,7 +3112,7 @@ public OnPlayerDisconnect(playerid, reason)
 		DestroyPlayerObject(playerid,snowobj[playerid]);
 		SnowONOFF[playerid] = 0;
 	}
-	strdel(twoIP[playerid],0,126);//запоминаем IP вышедшего игрока на 100 миллисекунд
+	strdel(twoIP[playerid],0,128);//запоминаем IP вышедшего игрока на 100 миллисекунд
 	strcat(twoIP[playerid],PlayerInfo[playerid][pIPAdr]);
 	SetTimerEx("ClearIP", 100, 0, "i", playerid);
 	SetTimerEx("OutOut", 300, 0, "i", playerid);//задержка, на время записи аккаунта банды
@@ -2531,6 +3158,35 @@ public SendAdminMessage(color, string[])
 	return 1;
 }
 
+forward SendAdminMessage22(color, string[], reg, admlvl);
+public SendAdminMessage22(color, string[], reg, admlvl)
+{
+	for(new i = 0; i < MAX_PLAYERS; i++)
+	{
+		if(IsPlayerConnected(i))
+		{
+			if(reg == 1)
+			{
+			    if(PlayerInfo[i][pAdmin] >= admlvl)
+			    {
+					if(FnConAdmScrNet(RealName[i]) >= 0)
+					{
+						SendClientMessage(i, color, string);
+					}
+				}
+			}
+			if(reg == 2)
+			{
+			    if(PlayerInfo[i][pAdmin] >= 1 && scrnetv[i] == 1)
+			    {
+					SendClientMessage(i, color, string);
+				}
+			}
+		}
+	}
+	return 1;
+}
+
 public OnPlayerSpawn(playerid)
 {
 #if (MOD4CINS == 0)
@@ -2546,6 +3202,7 @@ public OnPlayerSpawn(playerid)
 	functioncon[playerid]++;//прибавляем 1 к контрольной переменной функций
 	PlayCRTP[playerid] = 1;//блокировка контроля координат
 	new string[256];
+    if(PlayerInfo[playerid][pPassLock] == 1) { return 1; }
     if(PlayerInfo[playerid][pLock] == 1) { return 1; }
     if(gPlayerLogged[playerid] == 0)
 	{
@@ -2624,7 +3281,7 @@ public OnPlayerSpawn(playerid)
 	if(Score >= 500000 && Score < 600000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}Игрок{FFFFFF}*\n*Уровень: {00CCFF}6{FFFFFF}.*\n*{00CCFF}Пахан{FFFFFF}*");
 	if(Score >= 600000 && Score < 700000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}7{FFFFFF}.*\n*{00CCFF}Pro Drifter{FFFFFF}*");
 	if(Score >= 700000 && Score < 800000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}8{FFFFFF}.*\n*{00CCFF}VIP{FFFFFF}*");
-	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Гловарь{FFFFFF}*");
+	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Главарь{FFFFFF}*");
 	if(Score >= 900000 ) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}*10*{FFFFFF}.*\n*{00CCFF}Король дрифта{FFFFFF}*");
 	if(scrmod[3][playerid] == 0)
 	{
@@ -2643,7 +3300,6 @@ public OnPlayerSpawn(playerid)
 			if(buscount[j] == 1 && strcmp(RealName[playerid], busplayname[j], false) == 0)//если бизнес существует,
 			{//и это бизнес игрока, то:
 				busidplay[j] = playerid;//даём бизнесу ИД он-лайн игрока - владельца бизнеса
-				busmoney[j] = 0;//обнуляем счётчик минут бизнеса
 			}
 		}
 	}
@@ -3023,7 +3679,7 @@ public OnPlayerDeath(playerid, killerid, reason)
 	if(Score >= 500000 && Score < 600000) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}Игрок{FFFFFF}*\n*Уровень: {00CCFF}6{FFFFFF}.*\n*{00CCFF}Пахан{FFFFFF}*");
 	if(Score >= 600000 && Score < 700000) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}7{FFFFFF}.*\n*{00CCFF}Pro Drifter{FFFFFF}*");
 	if(Score >= 700000 && Score < 800000) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}8{FFFFFF}.*\n*{00CCFF}VIP{FFFFFF}*");
-	if(Score >= 800000 && Score < 900000) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Гловарь{FFFFFF}*");
+	if(Score >= 800000 && Score < 900000) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Главарь{FFFFFF}*");
 	if(Score >= 900000 ) format(Playerdr[killerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}*10*{FFFFFF}.*\n*{00CCFF}Король дрифта{FFFFFF}*");
 	Update3DTextLabelText(Level3D[killerid],0x00FF00FF,Playerdr[killerid][Level]);
 	}
@@ -3070,12 +3726,12 @@ public OnPlayerRegister(playerid, password[])
 {
 	if(IsPlayerConnected(playerid))
 	{
-		strdel(PlayerInfo[playerid][pTDReg], 0, 256);//очистка времени и даты регистрации
+		strdel(PlayerInfo[playerid][pTDReg], 0, 64);//очистка времени и даты регистрации
 		gettime(timecor[0], timecor[1]);
 		getdate(timecor[2], timecor[3], timecor[4]);
 		TimCor();//коррекция времени
 		DatCor();//коррекция даты
-		format(PlayerInfo[playerid][pTDReg], 256, "%02d:%02d - %02d/%02d/%04d", timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		format(PlayerInfo[playerid][pTDReg], 64, "%02d:%02d - %02d/%02d/%04d", timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
 #if (MOD90INS == 0)
 		new string3[64];
 //		new playername3[MAX_PLAYER_NAME];
@@ -3086,65 +3742,88 @@ public OnPlayerRegister(playerid, password[])
 		new File: hFile = fopen(string3, io_write);
 		if (hFile)
 		{
-			strmid(PlayerInfo[playerid][pKey], password, 0, strlen(password), 255);
-			new var[32];
+			strmid(PlayerInfo[playerid][pKey], password, 0, strlen(password), 64);
+			new var[128];
 			PlayerInfo[playerid][pReg] = 0;
-			format(var, 32, "Key=%s\n",PlayerInfo[playerid][pKey]);fwrite(hFile, var);
-			format(var, 32, "TDReg=%s\n",PlayerInfo[playerid][pTDReg]);fwrite(hFile, var);
-			format(var, 32, "IPAdr=%s\n",PlayerInfo[playerid][pIPAdr]);fwrite(hFile, var);
-			format(var, 32, "MinLog=%d\n",PlayerInfo[playerid][pMinlog]);fwrite(hFile, var);
-			format(var, 32, "AdminLevel=%d\n",PlayerInfo[playerid][pAdmin]);fwrite(hFile, var);
-			format(var, 32, "AdminShadow=%d\n",PlayerInfo[playerid][pAdmshad]);fwrite(hFile, var);
-			format(var, 32, "AdminLive=%d\n",PlayerInfo[playerid][pAdmlive]);fwrite(hFile, var);
-			format(var, 32, "Registered=%d\n",PlayerInfo[playerid][pReg]);fwrite(hFile, var);
-			format(var, 32, "Prison=%d\n",PlayerInfo[playerid][pPrison]);fwrite(hFile, var);
-			format(var, 32, "Prisonsec=%d\n",PlayerInfo[playerid][pPrisonsec]);fwrite(hFile, var);
-			format(var, 32, "Muted=%d\n",PlayerInfo[playerid][pMuted]);fwrite(hFile, var);
-			format(var, 32, "Mutedsec=%d\n",PlayerInfo[playerid][pMutedsec]);fwrite(hFile, var);
-			format(var, 32, "Money=%d\n",GetPVarInt(playerid, "PlMon"));fwrite(hFile, var);
-			format(var, 32, "Kills=%d\n",PlayerInfo[playerid][pKills]);fwrite(hFile, var);
-			format(var, 32, "Deaths=%d\n",PlayerInfo[playerid][pDeaths]);fwrite(hFile, var);
-			format(var, 32, "VIP=%d\n",PlayerInfo[playerid][pVIP]);fwrite(hFile, var);
-			format(var, 32, "Lock=%d\n",PlayerInfo[playerid][pLock]);fwrite(hFile, var);
-			format(var, 32, "Gang=%d\n",PGang[playerid]);fwrite(hFile, var);
-			format(var, 32, "GangLvl=%d\n",GangLvl[playerid]);fwrite(hFile, var);
-//			format(var, 32, "PISTOL=%d\n",PlayerInfo[playerid][pPISTOL]);fwrite(hFile, var);
-//			format(var, 32, "PISTOL_SILENCED=%d\n",PlayerInfo[playerid][pPISTOL_SILENCED]);fwrite(hFile, var);
-//			format(var, 32, "DESERT_EAGLE=%d\n",PlayerInfo[playerid][pDESERT_EAGLE]);fwrite(hFile, var);
-//			format(var, 32, "SHOTGUN=%d\n",PlayerInfo[playerid][pSHOTGUN]);fwrite(hFile, var);
-//			format(var, 32, "SAWNOFF_SHOTGUN=%d\n",PlayerInfo[playerid][pSAWNOFF_SHOTGUN]);fwrite(hFile, var);
-//			format(var, 32, "SPAS12_SHOTGUN=%d\n",PlayerInfo[playerid][pSPAS12_SHOTGUN]);fwrite(hFile, var);
-//			format(var, 32, "MICRO_UZI=%d\n",PlayerInfo[playerid][pMICRO_UZI]);fwrite(hFile, var);
-//			format(var, 32, "MP5=%d\n",PlayerInfo[playerid][pMP5]);fwrite(hFile, var);
-//			format(var, 32, "AK47=%d\n",PlayerInfo[playerid][pAK47]);fwrite(hFile, var);
-//			format(var, 32, "M4=%d\n",PlayerInfo[playerid][pM4]);fwrite(hFile, var);
-//			format(var, 32, "SNIPERRIFLE=%d\n",PlayerInfo[playerid][pSNIPERRIFLE]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot0=%d\n",playweap[playerid][0]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot1=%d\n",playweap[playerid][1]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot2=%d\n",playweap[playerid][2]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot3=%d\n",playweap[playerid][3]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot4=%d\n",playweap[playerid][4]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot5=%d\n",playweap[playerid][5]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot6=%d\n",playweap[playerid][6]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot7=%d\n",playweap[playerid][7]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot8=%d\n",playweap[playerid][8]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot9=%d\n",playweap[playerid][9]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot10=%d\n",playweap[playerid][10]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot11=%d\n",playweap[playerid][11]);fwrite(hFile, var);
-			format(var, 32, "Weapon_slot12=%d\n",playweap[playerid][12]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot0=%d\n",playammo[playerid][0]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot1=%d\n",playammo[playerid][1]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot2=%d\n",playammo[playerid][2]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot3=%d\n",playammo[playerid][3]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot4=%d\n",playammo[playerid][4]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot5=%d\n",playammo[playerid][5]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot6=%d\n",playammo[playerid][6]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot7=%d\n",playammo[playerid][7]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot8=%d\n",playammo[playerid][8]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot9=%d\n",playammo[playerid][9]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot10=%d\n",playammo[playerid][10]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot11=%d\n",playammo[playerid][11]);fwrite(hFile, var);
-			format(var, 32, "Ammo_slot12=%d\n",playammo[playerid][12]);fwrite(hFile, var);
+			format(var, 128, "Key=%s\n",PlayerInfo[playerid][pKey]);fwrite(hFile, var);
+			format(var, 128, "TDReg=%s\n",PlayerInfo[playerid][pTDReg]);fwrite(hFile, var);
+			format(var, 128, "DEndConD=%d\n",EndConD);fwrite(hFile, var);
+			format(var, 128, "DEndConM=%d\n",EndConM);fwrite(hFile, var);
+			format(var, 128, "DEndConY=%d\n",EndConY);fwrite(hFile, var);
+			format(var, 128, "IPAdr=%s\n",PlayerInfo[playerid][pIPAdr]);fwrite(hFile, var);
+			format(var, 128, "MinLog=%d\n",PlayerInfo[playerid][pMinlog]);fwrite(hFile, var);
+			format(var, 128, "AdminLevel=%d\n",PlayerInfo[playerid][pAdmin]);fwrite(hFile, var);
+			format(var, 128, "AdminShadow=%d\n",PlayerInfo[playerid][pAdmshad]);fwrite(hFile, var);
+			format(var, 128, "AdminLive=%d\n",PlayerInfo[playerid][pAdmlive]);fwrite(hFile, var);
+			format(var, 128, "Registered=%d\n",PlayerInfo[playerid][pReg]);fwrite(hFile, var);
+			format(var, 128, "Prison=%d\n",PlayerInfo[playerid][pPrison]);fwrite(hFile, var);
+			format(var, 128, "Prisonsec=%d\n",PlayerInfo[playerid][pPrisonsec]);fwrite(hFile, var);
+			format(var, 128, "Muted=%d\n",PlayerInfo[playerid][pMuted]);fwrite(hFile, var);
+			format(var, 128, "Mutedsec=%d\n",PlayerInfo[playerid][pMutedsec]);fwrite(hFile, var);
+			format(var, 128, "Money=%d\n",GetPVarInt(playerid, "PlMon"));fwrite(hFile, var);
+			format(var, 128, "Kills=%d\n",PlayerInfo[playerid][pKills]);fwrite(hFile, var);
+			format(var, 128, "Deaths=%d\n",PlayerInfo[playerid][pDeaths]);fwrite(hFile, var);
+			format(var, 128, "VIP=%d\n",PlayerInfo[playerid][pVIP]);fwrite(hFile, var);
+			format(var, 128, "Lock=%d\n",PlayerInfo[playerid][pLock]);fwrite(hFile, var);
+			format(var, 128, "Gang=%d\n",PGang[playerid]);fwrite(hFile, var);
+			format(var, 128, "GangLvl=%d\n",GangLvl[playerid]);fwrite(hFile, var);
+//			format(var, 128, "PISTOL=%d\n",PlayerInfo[playerid][pPISTOL]);fwrite(hFile, var);
+//			format(var, 128, "PISTOL_SILENCED=%d\n",PlayerInfo[playerid][pPISTOL_SILENCED]);fwrite(hFile, var);
+//			format(var, 128, "DESERT_EAGLE=%d\n",PlayerInfo[playerid][pDESERT_EAGLE]);fwrite(hFile, var);
+//			format(var, 128, "SHOTGUN=%d\n",PlayerInfo[playerid][pSHOTGUN]);fwrite(hFile, var);
+//			format(var, 128, "SAWNOFF_SHOTGUN=%d\n",PlayerInfo[playerid][pSAWNOFF_SHOTGUN]);fwrite(hFile, var);
+//			format(var, 128, "SPAS12_SHOTGUN=%d\n",PlayerInfo[playerid][pSPAS12_SHOTGUN]);fwrite(hFile, var);
+//			format(var, 128, "MICRO_UZI=%d\n",PlayerInfo[playerid][pMICRO_UZI]);fwrite(hFile, var);
+//			format(var, 128, "MP5=%d\n",PlayerInfo[playerid][pMP5]);fwrite(hFile, var);
+//			format(var, 128, "AK47=%d\n",PlayerInfo[playerid][pAK47]);fwrite(hFile, var);
+//			format(var, 128, "M4=%d\n",PlayerInfo[playerid][pM4]);fwrite(hFile, var);
+//			format(var, 128, "SNIPERRIFLE=%d\n",PlayerInfo[playerid][pSNIPERRIFLE]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot0=%d\n",playweap[playerid][0]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot1=%d\n",playweap[playerid][1]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot2=%d\n",playweap[playerid][2]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot3=%d\n",playweap[playerid][3]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot4=%d\n",playweap[playerid][4]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot5=%d\n",playweap[playerid][5]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot6=%d\n",playweap[playerid][6]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot7=%d\n",playweap[playerid][7]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot8=%d\n",playweap[playerid][8]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot9=%d\n",playweap[playerid][9]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot10=%d\n",playweap[playerid][10]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot11=%d\n",playweap[playerid][11]);fwrite(hFile, var);
+			format(var, 128, "Weapon_slot12=%d\n",playweap[playerid][12]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot0=%d\n",playammo[playerid][0]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot1=%d\n",playammo[playerid][1]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot2=%d\n",playammo[playerid][2]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot3=%d\n",playammo[playerid][3]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot4=%d\n",playammo[playerid][4]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot5=%d\n",playammo[playerid][5]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot6=%d\n",playammo[playerid][6]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot7=%d\n",playammo[playerid][7]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot8=%d\n",playammo[playerid][8]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot9=%d\n",playammo[playerid][9]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot10=%d\n",playammo[playerid][10]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot11=%d\n",playammo[playerid][11]);fwrite(hFile, var);
+			format(var, 128, "Ammo_slot12=%d\n",playammo[playerid][12]);fwrite(hFile, var);
+			format(var, 128, "Pass_data1=%s\n",PlayerInfo[playerid][pPass_data1]);fwrite(hFile, var);
+			format(var, 128, "Pass_inout1=%s\n",PlayerInfo[playerid][pPass_inout1]);fwrite(hFile, var);
+			format(var, 128, "Pass_ver1=%s\n",PlayerInfo[playerid][pPass_ver1]);fwrite(hFile, var);
+			format(var, 128, "Pass_count1=%d\n",PlayerInfo[playerid][pPass_count1]);fwrite(hFile, var);
+			format(var, 128, "Pass_data2=%s\n",PlayerInfo[playerid][pPass_data2]);fwrite(hFile, var);
+			format(var, 128, "Pass_inout2=%s\n",PlayerInfo[playerid][pPass_inout2]);fwrite(hFile, var);
+			format(var, 128, "Pass_ver2=%s\n",PlayerInfo[playerid][pPass_ver2]);fwrite(hFile, var);
+			format(var, 128, "Pass_count2=%d\n",PlayerInfo[playerid][pPass_count2]);fwrite(hFile, var);
+			format(var, 128, "Pass_data3=%s\n",PlayerInfo[playerid][pPass_data3]);fwrite(hFile, var);
+			format(var, 128, "Pass_inout3=%s\n",PlayerInfo[playerid][pPass_inout3]);fwrite(hFile, var);
+			format(var, 128, "Pass_ver3=%s\n",PlayerInfo[playerid][pPass_ver3]);fwrite(hFile, var);
+			format(var, 128, "Pass_count3=%d\n",PlayerInfo[playerid][pPass_count3]);fwrite(hFile, var);
+			format(var, 128, "Pass_data4=%s\n",PlayerInfo[playerid][pPass_data4]);fwrite(hFile, var);
+			format(var, 128, "Pass_inout4=%s\n",PlayerInfo[playerid][pPass_inout4]);fwrite(hFile, var);
+			format(var, 128, "Pass_ver4=%s\n",PlayerInfo[playerid][pPass_ver4]);fwrite(hFile, var);
+			format(var, 128, "Pass_count4=%d\n",PlayerInfo[playerid][pPass_count4]);fwrite(hFile, var);
+			format(var, 128, "PassMode=%d\n",PlayerInfo[playerid][pPassMode]);fwrite(hFile, var);
+			format(var, 128, "PassDel=%d\n",PlayerInfo[playerid][pPassDel]);fwrite(hFile, var);
+			format(var, 128, "PassLock=%d\n",PlayerInfo[playerid][pPassLock]);fwrite(hFile, var);
+			format(var, 128, "PassError=%d\n",PlayerInfo[playerid][pPassError]);fwrite(hFile, var);
 			fclose(hFile);
 
 			printf("* Игрок %s [%d] --> (регистрация, пароль: (%s)) .", RealName[playerid], playerid, password);
@@ -3154,14 +3833,16 @@ public OnPlayerRegister(playerid, password[])
 #endif
 #if (MOD90INS == 1)
 		new strdln[5000];
-		strmid(PlayerInfo[playerid][pKey], password, 0, strlen(password), 255);
+		strmid(PlayerInfo[playerid][pKey], password, 0, strlen(password), 64);
 		PlayerInfo[playerid][pReg] = 0;
 		format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
 		format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
 		format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
 		format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
 		format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-		format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
+		format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12,Pass_data1,Pass_inout1,Pass_ver1,Pass_count1,Pass_data2,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout2,Pass_ver2,Pass_count2,Pass_data3,Pass_inout3,Pass_ver3,Pass_count3,Pass_data4,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout4,Pass_ver4,Pass_count4,PassMode,PassDel,PassLock,PassError) ", strdln);
 		format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],PlayerInfo[playerid][pKey],PlayerInfo[playerid][pTDReg]);
 		format(strdln, sizeof(strdln), "%s%d,%d,%d,'%s',", strdln, EndConD,EndConM,EndConY,PlayerInfo[playerid][pIPAdr]);
 		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, PlayerInfo[playerid][pMinlog],PlayerInfo[playerid][pAdmin],PlayerInfo[playerid][pAdmshad]);
@@ -3175,7 +3856,17 @@ public OnPlayerRegister(playerid, password[])
 		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playweap[playerid][12],playammo[playerid][0],playammo[playerid][1],playammo[playerid][2]);
 		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playammo[playerid][3],playammo[playerid][4],playammo[playerid][5],playammo[playerid][6]);
 		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playammo[playerid][7],playammo[playerid][8],playammo[playerid][9],playammo[playerid][10]);
-		format(strdln, sizeof(strdln), "%s%d,%d)", strdln, playammo[playerid][11],playammo[playerid][12]);
+		format(strdln, sizeof(strdln), "%s%d,%d,'%s',", strdln, playammo[playerid][11],playammo[playerid][12],PlayerInfo[playerid][pPass_data1]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout1],PlayerInfo[playerid][pPass_ver1]);
+		format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count1],PlayerInfo[playerid][pPass_data2]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout2],PlayerInfo[playerid][pPass_ver2]);
+		format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count2],PlayerInfo[playerid][pPass_data3]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout3],PlayerInfo[playerid][pPass_ver3]);
+		format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count3],PlayerInfo[playerid][pPass_data4]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout4],PlayerInfo[playerid][pPass_ver4]);
+		format(strdln, sizeof(strdln), "%s%d,%d,", strdln, PlayerInfo[playerid][pPass_count4],PlayerInfo[playerid][pPassMode]);
+		format(strdln, sizeof(strdln), "%s%d,%d,", strdln, PlayerInfo[playerid][pPassDel],PlayerInfo[playerid][pPassLock]);
+		format(strdln, sizeof(strdln), "%s%d)", strdln, PlayerInfo[playerid][pPassError]);
 		db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
 
 		printf("* Игрок %s [%d] --> (регистрация, пароль: (%s)) .", RealName[playerid], playerid, password);
@@ -3202,63 +3893,86 @@ public OnPlayerSaveA(playerid)
 			new File: hFile = fopen(string3, io_write);
 			if (hFile)
 			{
-				new var[32];
-				format(var, 32, "Key=%s\n",PlayerInfo[playerid][pKey]);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",PlayerInfo[playerid][pTDReg]);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",PlayerInfo[playerid][pIPAdr]);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",PlayerInfo[playerid][pMinlog]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",PlayerInfo[playerid][pAdmin]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",PlayerInfo[playerid][pAdmshad]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",PlayerInfo[playerid][pAdmlive]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",PlayerInfo[playerid][pReg]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",PlayerInfo[playerid][pPrison]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",PlayerInfo[playerid][pPrisonsec]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",PlayerInfo[playerid][pMuted]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",PlayerInfo[playerid][pMutedsec]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",GetPVarInt(playerid, "PlMon"));fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",PlayerInfo[playerid][pKills]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",PlayerInfo[playerid][pDeaths]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",PlayerInfo[playerid][pVIP]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",PlayerInfo[playerid][pLock]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",PGang[playerid]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",GangLvl[playerid]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",PlayerInfo[playerid][pPISTOL]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",PlayerInfo[playerid][pPISTOL_SILENCED]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",PlayerInfo[playerid][pDESERT_EAGLE]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",PlayerInfo[playerid][pSHOTGUN]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",PlayerInfo[playerid][pSAWNOFF_SHOTGUN]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",PlayerInfo[playerid][pSPAS12_SHOTGUN]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",PlayerInfo[playerid][pMICRO_UZI]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",PlayerInfo[playerid][pMP5]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",PlayerInfo[playerid][pAK47]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",PlayerInfo[playerid][pM4]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",PlayerInfo[playerid][pSNIPERRIFLE]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",playweap[playerid][0]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",playweap[playerid][1]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",playweap[playerid][2]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",playweap[playerid][3]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",playweap[playerid][4]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",playweap[playerid][5]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",playweap[playerid][6]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",playweap[playerid][7]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",playweap[playerid][8]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",playweap[playerid][9]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",playweap[playerid][10]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",playweap[playerid][11]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",playweap[playerid][12]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",playammo[playerid][0]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",playammo[playerid][1]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",playammo[playerid][2]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",playammo[playerid][3]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",playammo[playerid][4]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",playammo[playerid][5]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",playammo[playerid][6]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",playammo[playerid][7]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",playammo[playerid][8]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",playammo[playerid][9]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",playammo[playerid][10]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",playammo[playerid][11]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",playammo[playerid][12]);fwrite(hFile, var);
+				new var[128];
+				format(var, 128, "Key=%s\n",PlayerInfo[playerid][pKey]);fwrite(hFile, var);
+				format(var, 128, "TDReg=%s\n",PlayerInfo[playerid][pTDReg]);fwrite(hFile, var);
+				format(var, 128, "DEndConD=%d\n",EndConD);fwrite(hFile, var);
+				format(var, 128, "DEndConM=%d\n",EndConM);fwrite(hFile, var);
+				format(var, 128, "DEndConY=%d\n",EndConY);fwrite(hFile, var);
+				format(var, 128, "IPAdr=%s\n",PlayerInfo[playerid][pIPAdr]);fwrite(hFile, var);
+				format(var, 128, "MinLog=%d\n",PlayerInfo[playerid][pMinlog]);fwrite(hFile, var);
+				format(var, 128, "AdminLevel=%d\n",PlayerInfo[playerid][pAdmin]);fwrite(hFile, var);
+				format(var, 128, "AdminShadow=%d\n",PlayerInfo[playerid][pAdmshad]);fwrite(hFile, var);
+				format(var, 128, "AdminLive=%d\n",PlayerInfo[playerid][pAdmlive]);fwrite(hFile, var);
+				format(var, 128, "Registered=%d\n",PlayerInfo[playerid][pReg]);fwrite(hFile, var);
+				format(var, 128, "Prison=%d\n",PlayerInfo[playerid][pPrison]);fwrite(hFile, var);
+				format(var, 128, "Prisonsec=%d\n",PlayerInfo[playerid][pPrisonsec]);fwrite(hFile, var);
+				format(var, 128, "Muted=%d\n",PlayerInfo[playerid][pMuted]);fwrite(hFile, var);
+				format(var, 128, "Mutedsec=%d\n",PlayerInfo[playerid][pMutedsec]);fwrite(hFile, var);
+				format(var, 128, "Money=%d\n",GetPVarInt(playerid, "PlMon"));fwrite(hFile, var);
+				format(var, 128, "Kills=%d\n",PlayerInfo[playerid][pKills]);fwrite(hFile, var);
+				format(var, 128, "Deaths=%d\n",PlayerInfo[playerid][pDeaths]);fwrite(hFile, var);
+				format(var, 128, "VIP=%d\n",PlayerInfo[playerid][pVIP]);fwrite(hFile, var);
+				format(var, 128, "Lock=%d\n",PlayerInfo[playerid][pLock]);fwrite(hFile, var);
+				format(var, 128, "Gang=%d\n",PGang[playerid]);fwrite(hFile, var);
+				format(var, 128, "GangLvl=%d\n",GangLvl[playerid]);fwrite(hFile, var);
+//				format(var, 128, "PISTOL=%d\n",PlayerInfo[playerid][pPISTOL]);fwrite(hFile, var);
+//				format(var, 128, "PISTOL_SILENCED=%d\n",PlayerInfo[playerid][pPISTOL_SILENCED]);fwrite(hFile, var);
+//				format(var, 128, "DESERT_EAGLE=%d\n",PlayerInfo[playerid][pDESERT_EAGLE]);fwrite(hFile, var);
+//				format(var, 128, "SHOTGUN=%d\n",PlayerInfo[playerid][pSHOTGUN]);fwrite(hFile, var);
+//				format(var, 128, "SAWNOFF_SHOTGUN=%d\n",PlayerInfo[playerid][pSAWNOFF_SHOTGUN]);fwrite(hFile, var);
+//				format(var, 128, "SPAS12_SHOTGUN=%d\n",PlayerInfo[playerid][pSPAS12_SHOTGUN]);fwrite(hFile, var);
+//				format(var, 128, "MICRO_UZI=%d\n",PlayerInfo[playerid][pMICRO_UZI]);fwrite(hFile, var);
+//				format(var, 128, "MP5=%d\n",PlayerInfo[playerid][pMP5]);fwrite(hFile, var);
+//				format(var, 128, "AK47=%d\n",PlayerInfo[playerid][pAK47]);fwrite(hFile, var);
+//				format(var, 128, "M4=%d\n",PlayerInfo[playerid][pM4]);fwrite(hFile, var);
+//				format(var, 128, "SNIPERRIFLE=%d\n",PlayerInfo[playerid][pSNIPERRIFLE]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot0=%d\n",playweap[playerid][0]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot1=%d\n",playweap[playerid][1]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot2=%d\n",playweap[playerid][2]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot3=%d\n",playweap[playerid][3]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot4=%d\n",playweap[playerid][4]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot5=%d\n",playweap[playerid][5]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot6=%d\n",playweap[playerid][6]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot7=%d\n",playweap[playerid][7]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot8=%d\n",playweap[playerid][8]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot9=%d\n",playweap[playerid][9]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot10=%d\n",playweap[playerid][10]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot11=%d\n",playweap[playerid][11]);fwrite(hFile, var);
+				format(var, 128, "Weapon_slot12=%d\n",playweap[playerid][12]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot0=%d\n",playammo[playerid][0]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot1=%d\n",playammo[playerid][1]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot2=%d\n",playammo[playerid][2]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot3=%d\n",playammo[playerid][3]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot4=%d\n",playammo[playerid][4]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot5=%d\n",playammo[playerid][5]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot6=%d\n",playammo[playerid][6]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot7=%d\n",playammo[playerid][7]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot8=%d\n",playammo[playerid][8]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot9=%d\n",playammo[playerid][9]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot10=%d\n",playammo[playerid][10]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot11=%d\n",playammo[playerid][11]);fwrite(hFile, var);
+				format(var, 128, "Ammo_slot12=%d\n",playammo[playerid][12]);fwrite(hFile, var);
+				format(var, 128, "Pass_data1=%s\n",PlayerInfo[playerid][pPass_data1]);fwrite(hFile, var);
+				format(var, 128, "Pass_inout1=%s\n",PlayerInfo[playerid][pPass_inout1]);fwrite(hFile, var);
+				format(var, 128, "Pass_ver1=%s\n",PlayerInfo[playerid][pPass_ver1]);fwrite(hFile, var);
+				format(var, 128, "Pass_count1=%d\n",PlayerInfo[playerid][pPass_count1]);fwrite(hFile, var);
+				format(var, 128, "Pass_data2=%s\n",PlayerInfo[playerid][pPass_data2]);fwrite(hFile, var);
+				format(var, 128, "Pass_inout2=%s\n",PlayerInfo[playerid][pPass_inout2]);fwrite(hFile, var);
+				format(var, 128, "Pass_ver2=%s\n",PlayerInfo[playerid][pPass_ver2]);fwrite(hFile, var);
+				format(var, 128, "Pass_count2=%d\n",PlayerInfo[playerid][pPass_count2]);fwrite(hFile, var);
+				format(var, 128, "Pass_data3=%s\n",PlayerInfo[playerid][pPass_data3]);fwrite(hFile, var);
+				format(var, 128, "Pass_inout3=%s\n",PlayerInfo[playerid][pPass_inout3]);fwrite(hFile, var);
+				format(var, 128, "Pass_ver3=%s\n",PlayerInfo[playerid][pPass_ver3]);fwrite(hFile, var);
+				format(var, 128, "Pass_count3=%d\n",PlayerInfo[playerid][pPass_count3]);fwrite(hFile, var);
+				format(var, 128, "Pass_data4=%s\n",PlayerInfo[playerid][pPass_data4]);fwrite(hFile, var);
+				format(var, 128, "Pass_inout4=%s\n",PlayerInfo[playerid][pPass_inout4]);fwrite(hFile, var);
+				format(var, 128, "Pass_ver4=%s\n",PlayerInfo[playerid][pPass_ver4]);fwrite(hFile, var);
+				format(var, 128, "Pass_count4=%d\n",PlayerInfo[playerid][pPass_count4]);fwrite(hFile, var);
+				format(var, 128, "PassMode=%d\n",PlayerInfo[playerid][pPassMode]);fwrite(hFile, var);
+				format(var, 128, "PassDel=%d\n",PlayerInfo[playerid][pPassDel]);fwrite(hFile, var);
+				format(var, 128, "PassLock=%d\n",PlayerInfo[playerid][pPassLock]);fwrite(hFile, var);
+				format(var, 128, "PassError=%d\n",PlayerInfo[playerid][pPassError]);fwrite(hFile, var);
 				fclose(hFile);
 			}
 #endif
@@ -3286,7 +4000,17 @@ public OnPlayerSaveA(playerid)
 			format(strdln, sizeof(strdln), "%sAmmo_slot5 = %d,Ammo_slot6 = %d,", strdln, playammo[playerid][5],playammo[playerid][6]);
 			format(strdln, sizeof(strdln), "%sAmmo_slot7 = %d,Ammo_slot8 = %d,", strdln, playammo[playerid][7],playammo[playerid][8]);
 			format(strdln, sizeof(strdln), "%sAmmo_slot9 = %d,Ammo_slot10 = %d,", strdln, playammo[playerid][9],playammo[playerid][10]);
-			format(strdln, sizeof(strdln), "%sAmmo_slot11 = %d,Ammo_slot12 = %d ", strdln, playammo[playerid][11],playammo[playerid][12]);
+			format(strdln, sizeof(strdln), "%sAmmo_slot11 = %d,Ammo_slot12 = %d,", strdln, playammo[playerid][11],playammo[playerid][12]);
+			format(strdln, sizeof(strdln), "%sPass_data1 = '%s',Pass_inout1 = '%s',", strdln, PlayerInfo[playerid][pPass_data1],PlayerInfo[playerid][pPass_inout1]);
+			format(strdln, sizeof(strdln), "%sPass_ver1 = '%s',Pass_count1 = %d,", strdln, PlayerInfo[playerid][pPass_ver1],PlayerInfo[playerid][pPass_count1]);
+			format(strdln, sizeof(strdln), "%sPass_data2 = '%s',Pass_inout2 = '%s',", strdln, PlayerInfo[playerid][pPass_data2],PlayerInfo[playerid][pPass_inout2]);
+			format(strdln, sizeof(strdln), "%sPass_ver2 = '%s',Pass_count2 = %d,", strdln, PlayerInfo[playerid][pPass_ver2],PlayerInfo[playerid][pPass_count2]);
+			format(strdln, sizeof(strdln), "%sPass_data3 = '%s',Pass_inout3 = '%s',", strdln, PlayerInfo[playerid][pPass_data3],PlayerInfo[playerid][pPass_inout3]);
+			format(strdln, sizeof(strdln), "%sPass_ver3 = '%s',Pass_count3 = %d,", strdln, PlayerInfo[playerid][pPass_ver3],PlayerInfo[playerid][pPass_count3]);
+			format(strdln, sizeof(strdln), "%sPass_data4 = '%s',Pass_inout4 = '%s',", strdln, PlayerInfo[playerid][pPass_data4],PlayerInfo[playerid][pPass_inout4]);
+			format(strdln, sizeof(strdln), "%sPass_ver4 = '%s',Pass_count4 = %d,", strdln, PlayerInfo[playerid][pPass_ver4],PlayerInfo[playerid][pPass_count4]);
+			format(strdln, sizeof(strdln), "%sPassMode = %d,PassDel = %d,", strdln, PlayerInfo[playerid][pPassMode],PlayerInfo[playerid][pPassDel]);
+			format(strdln, sizeof(strdln), "%sPassLock = %d,PassError = %d ", strdln, PlayerInfo[playerid][pPassLock],PlayerInfo[playerid][pPassError]);
 			format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, RealName[playerid]);
 			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
@@ -3309,7 +4033,7 @@ public ClearChat(playerid, lines)
 
 public OnPlayerLogin(playerid,password[])
 {
-	strdel(PlayerInfo[playerid][pTDReg], 0, 256);//очистка времени и даты регистрации
+	strdel(PlayerInfo[playerid][pTDReg], 0, 64);//очистка времени и даты регистрации
    	new string[256];
 	if(strcmp(" ",password, true ) == 0)
 	{
@@ -3333,7 +4057,7 @@ public OnPlayerLogin(playerid,password[])
 	    if( strcmp( keytmp , "Key" , true ) == 0 )
 		{
 			valtmp = ini_GetValue( PassData );
-			strmid(PlayerInfo[playerid][pKey], valtmp, 0, strlen(valtmp)-1, 255);
+			strmid(PlayerInfo[playerid][pKey], valtmp, 0, strlen(valtmp)-1, 64);
 		}
 		if(strcmp(PlayerInfo[playerid][pKey],password, false ) == 0 && strlen(PlayerInfo[playerid][pKey]) != 0 )
 		{
@@ -3342,7 +4066,7 @@ public OnPlayerLogin(playerid,password[])
 		    while ( fread( UserFile , Data , sizeof( Data ) ) )
 			{
 				key = ini_GetKey( Data );
-				if( strcmp( key , "TDReg" , true ) == 0 ) { PlayerInfo[playerid][pTDReg] = ini_GetValue( Data ); }
+				if( strcmp( key , "TDReg" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pTDReg], val, 0, strlen(val)-1, 64); }
 				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pMinlog] = strval( val ); }
 				if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pAdmin] = strval( val ); }
 				if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pAdmshad] = strval( val ); }
@@ -3396,19 +4120,28 @@ public OnPlayerLogin(playerid,password[])
 				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][10] = strval( val ); }
 				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][11] = strval( val ); }
 				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][12] = strval( val ); }
+				if( strcmp( key , "Pass_data1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data1], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_inout1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout1], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_ver1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver1], val, 0, strlen(val)-1, 32); }
+				if( strcmp( key , "Pass_count1" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count1] = strval( val ); }
+				if( strcmp( key , "Pass_data2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data2], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_inout2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout2], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_ver2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver2], val, 0, strlen(val)-1, 32); }
+				if( strcmp( key , "Pass_count2" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count2] = strval( val ); }
+				if( strcmp( key , "Pass_data3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data3], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_inout3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout3], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_ver3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver3], val, 0, strlen(val)-1, 32); }
+				if( strcmp( key , "Pass_count3" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count3] = strval( val ); }
+				if( strcmp( key , "Pass_data4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data4], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_inout4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout4], val, 0, strlen(val)-1, 64); }
+				if( strcmp( key , "Pass_ver4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver4], val, 0, strlen(val)-1, 32); }
+				if( strcmp( key , "Pass_count4" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count4] = strval( val ); }
+				if( strcmp( key , "PassMode" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassMode] = strval( val ); }
+				if( strcmp( key , "PassDel" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassDel] = strval( val ); }
+				if( strcmp( key , "PassLock" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassLock] = strval( val ); }
+				if( strcmp( key , "PassError" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassError] = strval( val ); }
 			}
 			fclose(UserFile);
-
-			LoadGangAcc(playerid);//Gangs system //строка оставлена для совместимости с ранней версией мода !!!
-
-			strdel(PlayerInfo[playerid][pTDReg], strlen(PlayerInfo[playerid][pTDReg])-1, strlen(PlayerInfo[playerid][pTDReg]));
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(strlen(PlayerInfo[playerid][pTDReg]) == 0)
-			{
-				strins(PlayerInfo[playerid][pTDReg], "---", 0, 256);
-			}
-//---------------------------------- конец -------------------------------------
 		}
 		else
 		{
@@ -3452,7 +4185,7 @@ public OnPlayerLogin(playerid,password[])
 	    	if( strcmp( keytmp , "Key" , true ) == 0 )
 			{
 				valtmp = ini_GetValue( PassData );
-				strmid(PlayerInfo[playerid][pKey], valtmp, 0, strlen(valtmp)-1, 255);
+				strmid(PlayerInfo[playerid][pKey], valtmp, 0, strlen(valtmp)-1, 64);
 			}
 			if(strcmp(PlayerInfo[playerid][pKey],password, false ) == 0 && strlen(PlayerInfo[playerid][pKey]) != 0 )//если пароль из fopen сходится с набранным паролем,
 			{//И пароль из fopen содержит хотя бы 1 символ, то: читаем аккаунт из fopen
@@ -3461,7 +4194,7 @@ public OnPlayerLogin(playerid,password[])
 		    	while ( fread( UserFile , Data , sizeof( Data ) ) )
 				{
 					key = ini_GetKey( Data );
-					if( strcmp( key , "TDReg" , true ) == 0 ) { PlayerInfo[playerid][pTDReg] = ini_GetValue( Data ); }
+					if( strcmp( key , "TDReg" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pTDReg], val, 0, strlen(val)-1, 64); }
 					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pMinlog] = strval( val ); }
 					if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pAdmin] = strval( val ); }
 					if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pAdmshad] = strval( val ); }
@@ -3515,19 +4248,45 @@ public OnPlayerLogin(playerid,password[])
 					if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][10] = strval( val ); }
 					if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][11] = strval( val ); }
 					if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); play2ammo[playerid][12] = strval( val ); }
+					if( strcmp( key , "Pass_data1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data1], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_inout1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout1], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_ver1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver1], val, 0, strlen(val)-1, 32); }
+					if( strcmp( key , "Pass_count1" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count1] = strval( val ); }
+					if( strcmp( key , "Pass_data2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data2], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_inout2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout2], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_ver2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver2], val, 0, strlen(val)-1, 32); }
+					if( strcmp( key , "Pass_count2" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count2] = strval( val ); }
+					if( strcmp( key , "Pass_data3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data3], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_inout3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout3], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_ver3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver3], val, 0, strlen(val)-1, 32); }
+					if( strcmp( key , "Pass_count3" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count3] = strval( val ); }
+					if( strcmp( key , "Pass_data4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_data4], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_inout4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_inout4], val, 0, strlen(val)-1, 64); }
+					if( strcmp( key , "Pass_ver4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(PlayerInfo[playerid][pPass_ver4], val, 0, strlen(val)-1, 32); }
+					if( strcmp( key , "Pass_count4" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPass_count4] = strval( val ); }
+					if( strcmp( key , "PassMode" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassMode] = strval( val ); }
+					if( strcmp( key , "PassDel" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassDel] = strval( val ); }
+					if( strcmp( key , "PassLock" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassLock] = strval( val ); }
+					if( strcmp( key , "PassError" , true ) == 0 ) { val = ini_GetValue( Data ); PlayerInfo[playerid][pPassError] = strval( val ); }
 				}
 				fclose(UserFile);
 
-				LoadGangAcc(playerid);//Gangs system //строка оставлена для совместимости с ранней версией мода !!!
-
-				strdel(PlayerInfo[playerid][pTDReg], strlen(PlayerInfo[playerid][pTDReg])-1, strlen(PlayerInfo[playerid][pTDReg]));
-//эти строки оставлены для совместимости с ранней версией мода !!!
+//эти строки добавлены для совместимости с ранней версией мода !!!
 //--------------------------------- начало -------------------------------------
-				if(strlen(PlayerInfo[playerid][pTDReg]) == 0)
-				{
-					strins(PlayerInfo[playerid][pTDReg], "---", 0, 256);
-				}
+				if(strlen(PlayerInfo[playerid][pPass_data1]) == 0) { strmid(PlayerInfo[playerid][pPass_data1], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_inout1]) == 0) { strmid(PlayerInfo[playerid][pPass_inout1], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_ver1]) == 0) { strmid(PlayerInfo[playerid][pPass_ver1], "---", 0, 3, 32); }
+				if(strlen(PlayerInfo[playerid][pPass_data2]) == 0) { strmid(PlayerInfo[playerid][pPass_data2], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_inout2]) == 0) { strmid(PlayerInfo[playerid][pPass_inout2], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_ver2]) == 0) { strmid(PlayerInfo[playerid][pPass_ver2], "---", 0, 3, 32); }
+				if(strlen(PlayerInfo[playerid][pPass_data3]) == 0) { strmid(PlayerInfo[playerid][pPass_data3], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_inout3]) == 0) { strmid(PlayerInfo[playerid][pPass_inout3], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_ver3]) == 0) { strmid(PlayerInfo[playerid][pPass_ver3], "---", 0, 3, 32); }
+				if(strlen(PlayerInfo[playerid][pPass_data4]) == 0) { strmid(PlayerInfo[playerid][pPass_data4], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_inout4]) == 0) { strmid(PlayerInfo[playerid][pPass_inout4], "---", 0, 3, 64); }
+				if(strlen(PlayerInfo[playerid][pPass_ver4]) == 0) { strmid(PlayerInfo[playerid][pPass_ver4], "---", 0, 3, 32); }
 //---------------------------------- конец -------------------------------------
+
 				format(string, sizeof(string), "DELETE FROM Players WHERE (Name = '%s')", RealName[playerid]);//создаём запрос БД
 				db_query(playerdb, string);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
 
@@ -3537,7 +4296,9 @@ public OnPlayerLogin(playerid,password[])
 				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
 				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
 				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
+				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12,Pass_data1,Pass_inout1,Pass_ver1,Pass_count1,Pass_data2,", strdln);
+				format(strdln, sizeof(strdln), "%sPass_inout2,Pass_ver2,Pass_count2,Pass_data3,Pass_inout3,Pass_ver3,Pass_count3,Pass_data4,", strdln);
+				format(strdln, sizeof(strdln), "%sPass_inout4,Pass_ver4,Pass_count4,PassMode,PassDel,PassLock,PassError) ", strdln);
 				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],PlayerInfo[playerid][pKey],PlayerInfo[playerid][pTDReg]);
 				format(strdln, sizeof(strdln), "%s%d,%d,%d,'%s',", strdln, EndConD,EndConM,EndConY,PlayerInfo[playerid][pIPAdr]);
 				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, PlayerInfo[playerid][pMinlog],PlayerInfo[playerid][pAdmin],PlayerInfo[playerid][pAdmshad]);
@@ -3551,7 +4312,17 @@ public OnPlayerLogin(playerid,password[])
 				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playweap[playerid][12],playammo[playerid][0],playammo[playerid][1],playammo[playerid][2]);
 				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playammo[playerid][3],playammo[playerid][4],playammo[playerid][5],playammo[playerid][6]);
 				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, playammo[playerid][7],playammo[playerid][8],playammo[playerid][9],playammo[playerid][10]);
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, playammo[playerid][11],playammo[playerid][12]);
+				format(strdln, sizeof(strdln), "%s%d,%d,'%s',", strdln, playammo[playerid][11],playammo[playerid][12],PlayerInfo[playerid][pPass_data1]);
+				format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout1],PlayerInfo[playerid][pPass_ver1]);
+				format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count1],PlayerInfo[playerid][pPass_data2]);
+				format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout2],PlayerInfo[playerid][pPass_ver2]);
+				format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count2],PlayerInfo[playerid][pPass_data3]);
+				format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout3],PlayerInfo[playerid][pPass_ver3]);
+				format(strdln, sizeof(strdln), "%s%d,'%s',", strdln, PlayerInfo[playerid][pPass_count3],PlayerInfo[playerid][pPass_data4]);
+				format(strdln, sizeof(strdln), "%s'%s','%s',", strdln, PlayerInfo[playerid][pPass_inout4],PlayerInfo[playerid][pPass_ver4]);
+				format(strdln, sizeof(strdln), "%s%d,%d,", strdln, PlayerInfo[playerid][pPass_count4],PlayerInfo[playerid][pPassMode]);
+				format(strdln, sizeof(strdln), "%s%d,%d,", strdln, PlayerInfo[playerid][pPassDel],PlayerInfo[playerid][pPassLock]);
+				format(strdln, sizeof(strdln), "%s%d)", strdln, PlayerInfo[playerid][pPassError]);
 				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
 
 				migration[playerid] = 0;//обнуляем режим миграции аккаунта
@@ -3588,9 +4359,9 @@ public OnPlayerLogin(playerid,password[])
 	{//читаем аккаунт из SQLite
 		format(string, sizeof(string), "SELECT * FROM Players WHERE (Name = '%s')", RealName[playerid]);//создаём запрос БД
 		querydb[playerid] = db_query(playerdb, string);//отправляем запрос на чтение аккаунта из БД
-		db_get_field(querydb[playerid], 2, PlayerInfo[playerid][pKey], 128);//читаем пароль из БД
+		db_get_field(querydb[playerid], 2, PlayerInfo[playerid][pKey], 64);//читаем пароль из БД
 //		new loccor = 0;//переводим коды символов пароля из отрицательного диапазона чисел в положительный диапазон
-//		while(loccor <= 128)//(в БД, коды символов от 128 до 255 - представляются в отрицательном диапазоне чисел !!!
+//		while(loccor <= 64)//(в БД, коды символов от 128 до 255 - представляются в отрицательном диапазоне чисел !!!
 //		{//(коды символов Русских букв))
 //	    	if(PlayerInfo[playerid][pKey][loccor] == 0) { break; }
 //	    	if(PlayerInfo[playerid][pKey][loccor] < 0) { PlayerInfo[playerid][pKey][loccor] = PlayerInfo[playerid][pKey][loccor] + 256; }
@@ -3598,50 +4369,70 @@ public OnPlayerLogin(playerid,password[])
 //		}
 		if(strcmp(PlayerInfo[playerid][pKey], password, false) == 0 && strlen(PlayerInfo[playerid][pKey]) != 0)//если пароль из БД сходится с набранным паролем,
 		{//И пароль из БД содержит хотя бы 1 символ, то: читаем аккаунт из БД
-			new buffer[32];
-			db_get_field(querydb[playerid], 3, PlayerInfo[playerid][pTDReg], 256);
-			db_get_field(querydb[playerid], 8, buffer, 32); PlayerInfo[playerid][pMinlog] = strval(buffer);
-			db_get_field(querydb[playerid], 9, buffer, 32); PlayerInfo[playerid][pAdmin] = strval(buffer);
-			db_get_field(querydb[playerid], 10, buffer, 32); PlayerInfo[playerid][pAdmshad] = strval(buffer);
-			db_get_field(querydb[playerid], 11, buffer, 32); PlayerInfo[playerid][pAdmlive] = strval(buffer);
-			db_get_field(querydb[playerid], 12, buffer, 32); PlayerInfo[playerid][pReg] = strval(buffer);
-			db_get_field(querydb[playerid], 13, buffer, 32); PlayerInfo[playerid][pPrison] = strval(buffer);
-			db_get_field(querydb[playerid], 14, buffer, 32); PlayerInfo[playerid][pPrisonsec] = strval(buffer);
-			db_get_field(querydb[playerid], 15, buffer, 32); PlayerInfo[playerid][pMuted] = strval(buffer);
-			db_get_field(querydb[playerid], 16, buffer, 32); PlayerInfo[playerid][pMutedsec] = strval(buffer);
-			db_get_field(querydb[playerid], 17, buffer, 32); SetPVarInt(playerid, "PlMon", strval(buffer));
-			db_get_field(querydb[playerid], 18, buffer, 32); PlayerInfo[playerid][pKills] = strval(buffer);
-			db_get_field(querydb[playerid], 19, buffer, 32); PlayerInfo[playerid][pDeaths] = strval(buffer);
-			db_get_field(querydb[playerid], 20, buffer, 32); PlayerInfo[playerid][pVIP] = strval(buffer);
-			db_get_field(querydb[playerid], 21, buffer, 32); PlayerInfo[playerid][pLock] = strval(buffer);
-			db_get_field(querydb[playerid], 22, buffer, 32); PGang[playerid] = strval(buffer);
-			db_get_field(querydb[playerid], 23, buffer, 32); GangLvl[playerid] = strval(buffer);
-			db_get_field(querydb[playerid], 24, buffer, 32); play2weap[playerid][0] = strval(buffer);
-			db_get_field(querydb[playerid], 25, buffer, 32); play2weap[playerid][1] = strval(buffer);
-			db_get_field(querydb[playerid], 26, buffer, 32); play2weap[playerid][2] = strval(buffer);
-			db_get_field(querydb[playerid], 27, buffer, 32); play2weap[playerid][3] = strval(buffer);
-			db_get_field(querydb[playerid], 28, buffer, 32); play2weap[playerid][4] = strval(buffer);
-			db_get_field(querydb[playerid], 29, buffer, 32); play2weap[playerid][5] = strval(buffer);
-			db_get_field(querydb[playerid], 30, buffer, 32); play2weap[playerid][6] = strval(buffer);
-			db_get_field(querydb[playerid], 31, buffer, 32); play2weap[playerid][7] = strval(buffer);
-			db_get_field(querydb[playerid], 32, buffer, 32); play2weap[playerid][8] = strval(buffer);
-			db_get_field(querydb[playerid], 33, buffer, 32); play2weap[playerid][9] = strval(buffer);
-			db_get_field(querydb[playerid], 34, buffer, 32); play2weap[playerid][10] = strval(buffer);
-			db_get_field(querydb[playerid], 35, buffer, 32); play2weap[playerid][11] = strval(buffer);
-			db_get_field(querydb[playerid], 36, buffer, 32); play2weap[playerid][12] = strval(buffer);
-			db_get_field(querydb[playerid], 37, buffer, 32); play2ammo[playerid][0] = strval(buffer);
-			db_get_field(querydb[playerid], 38, buffer, 32); play2ammo[playerid][1] = strval(buffer);
-			db_get_field(querydb[playerid], 39, buffer, 32); play2ammo[playerid][2] = strval(buffer);
-			db_get_field(querydb[playerid], 40, buffer, 32); play2ammo[playerid][3] = strval(buffer);
-			db_get_field(querydb[playerid], 41, buffer, 32); play2ammo[playerid][4] = strval(buffer);
-			db_get_field(querydb[playerid], 42, buffer, 32); play2ammo[playerid][5] = strval(buffer);
-			db_get_field(querydb[playerid], 43, buffer, 32); play2ammo[playerid][6] = strval(buffer);
-			db_get_field(querydb[playerid], 44, buffer, 32); play2ammo[playerid][7] = strval(buffer);
-			db_get_field(querydb[playerid], 45, buffer, 32); play2ammo[playerid][8] = strval(buffer);
-			db_get_field(querydb[playerid], 46, buffer, 32); play2ammo[playerid][9] = strval(buffer);
-			db_get_field(querydb[playerid], 47, buffer, 32); play2ammo[playerid][10] = strval(buffer);
-			db_get_field(querydb[playerid], 48, buffer, 32); play2ammo[playerid][11] = strval(buffer);
-			db_get_field(querydb[playerid], 49, buffer, 32); play2ammo[playerid][12] = strval(buffer);
+			new buffer[64];
+			db_get_field(querydb[playerid], 3, PlayerInfo[playerid][pTDReg], 64);
+			db_get_field(querydb[playerid], 8, buffer, 64); PlayerInfo[playerid][pMinlog] = strval(buffer);
+			db_get_field(querydb[playerid], 9, buffer, 64); PlayerInfo[playerid][pAdmin] = strval(buffer);
+			db_get_field(querydb[playerid], 10, buffer, 64); PlayerInfo[playerid][pAdmshad] = strval(buffer);
+			db_get_field(querydb[playerid], 11, buffer, 64); PlayerInfo[playerid][pAdmlive] = strval(buffer);
+			db_get_field(querydb[playerid], 12, buffer, 64); PlayerInfo[playerid][pReg] = strval(buffer);
+			db_get_field(querydb[playerid], 13, buffer, 64); PlayerInfo[playerid][pPrison] = strval(buffer);
+			db_get_field(querydb[playerid], 14, buffer, 64); PlayerInfo[playerid][pPrisonsec] = strval(buffer);
+			db_get_field(querydb[playerid], 15, buffer, 64); PlayerInfo[playerid][pMuted] = strval(buffer);
+			db_get_field(querydb[playerid], 16, buffer, 64); PlayerInfo[playerid][pMutedsec] = strval(buffer);
+			db_get_field(querydb[playerid], 17, buffer, 64); SetPVarInt(playerid, "PlMon", strval(buffer));
+			db_get_field(querydb[playerid], 18, buffer, 64); PlayerInfo[playerid][pKills] = strval(buffer);
+			db_get_field(querydb[playerid], 19, buffer, 64); PlayerInfo[playerid][pDeaths] = strval(buffer);
+			db_get_field(querydb[playerid], 20, buffer, 64); PlayerInfo[playerid][pVIP] = strval(buffer);
+			db_get_field(querydb[playerid], 21, buffer, 64); PlayerInfo[playerid][pLock] = strval(buffer);
+			db_get_field(querydb[playerid], 22, buffer, 64); PGang[playerid] = strval(buffer);
+			db_get_field(querydb[playerid], 23, buffer, 64); GangLvl[playerid] = strval(buffer);
+			db_get_field(querydb[playerid], 24, buffer, 64); play2weap[playerid][0] = strval(buffer);
+			db_get_field(querydb[playerid], 25, buffer, 64); play2weap[playerid][1] = strval(buffer);
+			db_get_field(querydb[playerid], 26, buffer, 64); play2weap[playerid][2] = strval(buffer);
+			db_get_field(querydb[playerid], 27, buffer, 64); play2weap[playerid][3] = strval(buffer);
+			db_get_field(querydb[playerid], 28, buffer, 64); play2weap[playerid][4] = strval(buffer);
+			db_get_field(querydb[playerid], 29, buffer, 64); play2weap[playerid][5] = strval(buffer);
+			db_get_field(querydb[playerid], 30, buffer, 64); play2weap[playerid][6] = strval(buffer);
+			db_get_field(querydb[playerid], 31, buffer, 64); play2weap[playerid][7] = strval(buffer);
+			db_get_field(querydb[playerid], 32, buffer, 64); play2weap[playerid][8] = strval(buffer);
+			db_get_field(querydb[playerid], 33, buffer, 64); play2weap[playerid][9] = strval(buffer);
+			db_get_field(querydb[playerid], 34, buffer, 64); play2weap[playerid][10] = strval(buffer);
+			db_get_field(querydb[playerid], 35, buffer, 64); play2weap[playerid][11] = strval(buffer);
+			db_get_field(querydb[playerid], 36, buffer, 64); play2weap[playerid][12] = strval(buffer);
+			db_get_field(querydb[playerid], 37, buffer, 64); play2ammo[playerid][0] = strval(buffer);
+			db_get_field(querydb[playerid], 38, buffer, 64); play2ammo[playerid][1] = strval(buffer);
+			db_get_field(querydb[playerid], 39, buffer, 64); play2ammo[playerid][2] = strval(buffer);
+			db_get_field(querydb[playerid], 40, buffer, 64); play2ammo[playerid][3] = strval(buffer);
+			db_get_field(querydb[playerid], 41, buffer, 64); play2ammo[playerid][4] = strval(buffer);
+			db_get_field(querydb[playerid], 42, buffer, 64); play2ammo[playerid][5] = strval(buffer);
+			db_get_field(querydb[playerid], 43, buffer, 64); play2ammo[playerid][6] = strval(buffer);
+			db_get_field(querydb[playerid], 44, buffer, 64); play2ammo[playerid][7] = strval(buffer);
+			db_get_field(querydb[playerid], 45, buffer, 64); play2ammo[playerid][8] = strval(buffer);
+			db_get_field(querydb[playerid], 46, buffer, 64); play2ammo[playerid][9] = strval(buffer);
+			db_get_field(querydb[playerid], 47, buffer, 64); play2ammo[playerid][10] = strval(buffer);
+			db_get_field(querydb[playerid], 48, buffer, 64); play2ammo[playerid][11] = strval(buffer);
+			db_get_field(querydb[playerid], 49, buffer, 64); play2ammo[playerid][12] = strval(buffer);
+			db_get_field(querydb[playerid], 50, PlayerInfo[playerid][pPass_data1], 64);
+			db_get_field(querydb[playerid], 51, PlayerInfo[playerid][pPass_inout1], 64);
+			db_get_field(querydb[playerid], 52, PlayerInfo[playerid][pPass_ver1], 32);
+			db_get_field(querydb[playerid], 53, buffer, 64); PlayerInfo[playerid][pPass_count1] = strval(buffer);
+			db_get_field(querydb[playerid], 54, PlayerInfo[playerid][pPass_data2], 64);
+			db_get_field(querydb[playerid], 55, PlayerInfo[playerid][pPass_inout2], 64);
+			db_get_field(querydb[playerid], 56, PlayerInfo[playerid][pPass_ver2], 32);
+			db_get_field(querydb[playerid], 57, buffer, 64); PlayerInfo[playerid][pPass_count2] = strval(buffer);
+			db_get_field(querydb[playerid], 58, PlayerInfo[playerid][pPass_data3], 64);
+			db_get_field(querydb[playerid], 59, PlayerInfo[playerid][pPass_inout3], 64);
+			db_get_field(querydb[playerid], 60, PlayerInfo[playerid][pPass_ver3], 32);
+			db_get_field(querydb[playerid], 61, buffer, 64); PlayerInfo[playerid][pPass_count3] = strval(buffer);
+			db_get_field(querydb[playerid], 62, PlayerInfo[playerid][pPass_data4], 64);
+			db_get_field(querydb[playerid], 63, PlayerInfo[playerid][pPass_inout4], 64);
+			db_get_field(querydb[playerid], 64, PlayerInfo[playerid][pPass_ver4], 32);
+			db_get_field(querydb[playerid], 65, buffer, 64); PlayerInfo[playerid][pPass_count4] = strval(buffer);
+			db_get_field(querydb[playerid], 66, buffer, 64); PlayerInfo[playerid][pPassMode] = strval(buffer);
+			db_get_field(querydb[playerid], 67, buffer, 64); PlayerInfo[playerid][pPassDel] = strval(buffer);
+			db_get_field(querydb[playerid], 68, buffer, 64); PlayerInfo[playerid][pPassLock] = strval(buffer);
+			db_get_field(querydb[playerid], 69, buffer, 64); PlayerInfo[playerid][pPassError] = strval(buffer);
 			db_free_result(querydb[playerid]);//очищаем результат запроса БД
 		}
 		else//иначе - НЕ читаем аккаунт из БД
@@ -3700,7 +4491,362 @@ public OnPlayerLogin(playerid,password[])
 		PlayerInfo[playerid][pMuted] = 0;
 		PlayerInfo[playerid][pMutedsec] = 0;
 		PlayerInfo[playerid][pLock] = 0;
+
+		strmid(PlayerInfo[playerid][pPass_data1], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout1], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver1], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count1] = 0;
+		strmid(PlayerInfo[playerid][pPass_data2], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout2], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver2], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count2] = 0;
+		strmid(PlayerInfo[playerid][pPass_data3], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout3], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver3], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count3] = 0;
+		strmid(PlayerInfo[playerid][pPass_data4], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout4], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver4], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count4] = 0;
+		PlayerInfo[playerid][pPassMode] = MOD4DINS;
+		PlayerInfo[playerid][pPassDel] = 0;
+		PlayerInfo[playerid][pPassLock] = 0;
+		PlayerInfo[playerid][pPassError] = 0;
+
 		PlayerInfo[playerid][pReg] = 1;
+	}
+	if(PlayerInfo[playerid][pPassMode] != MOD4DINS)//если установлен новый режим паспортов, то:
+	{//очистка всех паспортов
+		strmid(PlayerInfo[playerid][pPass_data1], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout1], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver1], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count1] = 0;
+		strmid(PlayerInfo[playerid][pPass_data2], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout2], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver2], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count2] = 0;
+		strmid(PlayerInfo[playerid][pPass_data3], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout3], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver3], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count3] = 0;
+		strmid(PlayerInfo[playerid][pPass_data4], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_inout4], "---", 0, 3, 64);
+		strmid(PlayerInfo[playerid][pPass_ver4], "---", 0, 3, 32);
+		PlayerInfo[playerid][pPass_count4] = 0;
+		PlayerInfo[playerid][pPassMode] = MOD4DINS;
+		PlayerInfo[playerid][pPassDel] = 0;
+		PlayerInfo[playerid][pPassLock] = 0;
+		PlayerInfo[playerid][pPassError] = 0;
+	}
+#if (MOD4DINS >= 1)
+	if(PlayerInfo[playerid][pPassLock] == 1)//если паспорт заблокирован, то:
+	{
+		format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - аккаунт заблокирован системой паспортов !",RealName[playerid],playerid);
+		print(string);
+		SendClientMessageToAll(COLOR_RED,string);
+		SetTimerEx("PlayKick", 300, 0, "i", playerid);
+		return 1;
+	}
+#endif
+	if(PlayerInfo[playerid][pLock] == 0)//если аккаунт НЕ забанен, то:
+	{
+		new loctag[64], locdata;
+		locdata = 0;//обнуление ошибки
+		gpci(playerid, loctag, sizeof(loctag));//чтение gpci-тега
+		if(FngpciControl(loctag) == 0)//если ошибка gpci-тега, то:
+		{
+			locdata = 1;//ошибка 1
+		}
+		else
+		{
+			Maskgpci(loctag);
+			if(strcmp(loctag, pergpcifirst[playerid], false) != 0)//если gpci-тег не сходится с gpci-тегом при коннекте, то:
+			{
+				locdata = 2;//ошибка 2
+			}
+		}
+		if(locdata != 0)//если ошибка не равна нулю, то:
+		{
+			gPlayerLogged[playerid] = 1;//разрешение записи аккаунта
+			PlayerInfo[playerid][pPassError]++;//ошибка паспорта +1
+#if (MOD4DINS == 0)
+			format(string,sizeof(string),"* Игрок %s [%d] был кикнут - ошибка %d входных данных !",RealName[playerid],playerid,locdata);
+			print(string);
+			SendClientMessage(playerid,COLOR_RED,string);
+			SetTimerEx("PlayKick", 300, 0, "i", playerid);
+			return 1;
+#endif
+#if (MOD4DINS >= 1)
+			if(PlayerInfo[playerid][pPassError] >= 4)//если ошибок паспорта больше или равно 4, то:
+			{
+				PlayerInfo[playerid][pPassLock] = 1;//блокировка паспорта
+				format(string,sizeof(string),"[pass] Игрок %s [%d] - ошибка %d входных данных (накоплено ошибок: 4).",RealName[playerid],playerid,locdata);
+				print(string);
+				SendClientMessage(playerid,COLOR_RED,string);
+				format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - блокировка системой паспортов !",RealName[playerid],playerid,locdata);
+				print(string);
+				SendClientMessageToAll(COLOR_RED,string);
+				SetTimerEx("PlayKick", 300, 0, "i", playerid);
+				return 1;
+			}
+			printf("[pass] Игрок %s [%d] был кикнут - ошибка %d входных данных (накоплено ошибок: %d).",RealName[playerid],playerid,locdata,PlayerInfo[playerid][pPassError]);
+			format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - ошибка %d входных данных.",RealName[playerid],playerid,locdata);
+			SendClientMessageToAll(COLOR_RED,string);
+			format(string,sizeof(string),"[pass] Накоплено ошибок: %d , в случае накопления 4-х ошибок - Ваш аккаунт",PlayerInfo[playerid][pPassError]);
+			SendClientMessage(playerid,COLOR_RED,string);
+			SendClientMessage(playerid,COLOR_RED,"[pass] будет заблокирован системой паспортов - БЕЗ возможности восстановления !");
+			SetTimerEx("PlayKick", 300, 0, "i", playerid);
+			return 1;
+#endif
+		}
+#if (MOD4DINS == 0)
+		strmid(PlayerInfo[playerid][pPass_data1], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-1
+		playconpass[playerid] = 0;//текущий паспорт = 0
+#endif
+#if (MOD4DINS == 1)
+		if(strcmp(PlayerInfo[playerid][pPass_data1], loctag, false) == 0)//если gpci-тег сходится с паспортом-1, то:
+		{
+			playconpass[playerid] = 1;//текущий паспорт = 1 (использование)
+		}
+		if(playconpass[playerid] == 0)//если текущий паспорт не определён, то:
+		{
+			if(strcmp(PlayerInfo[playerid][pPass_data1], "---", false) == 0)//если паспорт-1 пустой, то:
+			{
+				strmid(PlayerInfo[playerid][pPass_data1], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-1
+				playconpass[playerid] = -1;//текущий паспорт = -1 (регистрация)
+			}
+			else//иначе, если паспорт-1 НЕ пустой, то:
+			{
+				gPlayerLogged[playerid] = 1;//разрешение записи аккаунта
+				PlayerInfo[playerid][pPassLock] = 1;//блокировка паспорта
+				format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - блокировка системой паспортов !",RealName[playerid],playerid,locdata);
+				print(string);
+				SendClientMessageToAll(COLOR_RED,string);
+				SetTimerEx("PlayKick", 300, 0, "i", playerid);
+				return 1;
+			}
+		}
+#endif
+#if (MOD4DINS == 2)
+		if(strcmp(PlayerInfo[playerid][pPass_data1], loctag, false) == 0)//если gpci-тег сходится с паспортом-1, то:
+		{
+			playconpass[playerid] = 1;//текущий паспорт = 1 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data2], loctag, false) == 0)//если gpci-тег сходится с паспортом-2, то:
+		{
+			playconpass[playerid] = 2;//текущий паспорт = 2 (использование)
+		}
+		if(playconpass[playerid] == 0)//если текущий паспорт не определён, то:
+		{
+			if(strcmp(PlayerInfo[playerid][pPass_data1], "---", false) == 0)//если паспорт-1 пустой, то:
+			{
+				strmid(PlayerInfo[playerid][pPass_data1], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-1
+				playconpass[playerid] = -1;//текущий паспорт = -1 (регистрация)
+			}
+			else//иначе, если паспорт-1 НЕ пустой, то:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data2], "---", false) == 0)//если паспорт-2 пустой, то:
+				{
+					strmid(PlayerInfo[playerid][pPass_data2], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-2
+					playconpass[playerid] = -2;//текущий паспорт = -2 (регистрация)
+				}
+				else//иначе, если паспорт-2 НЕ пустой, то:
+				{
+					gPlayerLogged[playerid] = 1;//разрешение записи аккаунта
+					PlayerInfo[playerid][pPassLock] = 1;//блокировка паспорта
+					format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - блокировка системой паспортов !",RealName[playerid],playerid);
+					print(string);
+					SendClientMessageToAll(COLOR_RED,string);
+					SetTimerEx("PlayKick", 300, 0, "i", playerid);
+					return 1;
+				}
+			}
+		}
+#endif
+#if (MOD4DINS == 3)
+		if(strcmp(PlayerInfo[playerid][pPass_data1], loctag, false) == 0)//если gpci-тег сходится с паспортом-1, то:
+		{
+			playconpass[playerid] = 1;//текущий паспорт = 1 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data2], loctag, false) == 0)//если gpci-тег сходится с паспортом-2, то:
+		{
+			playconpass[playerid] = 2;//текущий паспорт = 2 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data3], loctag, false) == 0)//если gpci-тег сходится с паспортом-3, то:
+		{
+			playconpass[playerid] = 3;//текущий паспорт = 3 (использование)
+		}
+		if(playconpass[playerid] == 0)//если текущий паспорт не определён, то:
+		{
+			if(strcmp(PlayerInfo[playerid][pPass_data1], "---", false) == 0)//если паспорт-1 пустой, то:
+			{
+				strmid(PlayerInfo[playerid][pPass_data1], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-1
+				playconpass[playerid] = -1;//текущий паспорт = -1 (регистрация)
+			}
+			else//иначе, если паспорт-1 НЕ пустой, то:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data2], "---", false) == 0)//если паспорт-2 пустой, то:
+				{
+					strmid(PlayerInfo[playerid][pPass_data2], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-2
+					playconpass[playerid] = -2;//текущий паспорт = -2 (регистрация)
+				}
+				else//иначе, если паспорт-2 НЕ пустой, то:
+				{
+					if(strcmp(PlayerInfo[playerid][pPass_data3], "---", false) == 0)//если паспорт-3 пустой, то:
+					{
+						strmid(PlayerInfo[playerid][pPass_data3], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-3
+						playconpass[playerid] = -3;//текущий паспорт = -3 (регистрация)
+					}
+					else//иначе, если паспорт-3 НЕ пустой, то:
+					{
+						gPlayerLogged[playerid] = 1;//разрешение записи аккаунта
+						PlayerInfo[playerid][pPassLock] = 1;//блокировка паспорта
+						format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - блокировка системой паспортов !",RealName[playerid],playerid);
+						print(string);
+						SendClientMessageToAll(COLOR_RED,string);
+						SetTimerEx("PlayKick", 300, 0, "i", playerid);
+						return 1;
+					}
+				}
+			}
+		}
+#endif
+#if (MOD4DINS == 4)
+		if(strcmp(PlayerInfo[playerid][pPass_data1], loctag, false) == 0)//если gpci-тег сходится с паспортом-1, то:
+		{
+			playconpass[playerid] = 1;//текущий паспорт = 1 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data2], loctag, false) == 0)//если gpci-тег сходится с паспортом-2, то:
+		{
+			playconpass[playerid] = 2;//текущий паспорт = 2 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data3], loctag, false) == 0)//если gpci-тег сходится с паспортом-3, то:
+		{
+			playconpass[playerid] = 3;//текущий паспорт = 3 (использование)
+		}
+		if(strcmp(PlayerInfo[playerid][pPass_data4], loctag, false) == 0)//если gpci-тег сходится с паспортом-4, то:
+		{
+			playconpass[playerid] = 4;//текущий паспорт = 4 (использование)
+		}
+		if(playconpass[playerid] == 0)//если текущий паспорт не определён, то:
+		{
+			if(strcmp(PlayerInfo[playerid][pPass_data1], "---", false) == 0)//если паспорт-1 пустой, то:
+			{
+				strmid(PlayerInfo[playerid][pPass_data1], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-1
+				playconpass[playerid] = -1;//текущий паспорт = -1 (регистрация)
+			}
+			else//иначе, если паспорт-1 НЕ пустой, то:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data2], "---", false) == 0)//если паспорт-2 пустой, то:
+				{
+					strmid(PlayerInfo[playerid][pPass_data2], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-2
+					playconpass[playerid] = -2;//текущий паспорт = -2 (регистрация)
+				}
+				else//иначе, если паспорт-2 НЕ пустой, то:
+				{
+					if(strcmp(PlayerInfo[playerid][pPass_data3], "---", false) == 0)//если паспорт-3 пустой, то:
+					{
+						strmid(PlayerInfo[playerid][pPass_data3], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-3
+						playconpass[playerid] = -3;//текущий паспорт = -3 (регистрация)
+					}
+					else//иначе, если паспорт-3 НЕ пустой, то:
+					{
+						if(strcmp(PlayerInfo[playerid][pPass_data4], "---", false) == 0)//если паспорт-4 пустой, то:
+						{
+							strmid(PlayerInfo[playerid][pPass_data4], loctag, 0, strlen(loctag), 64);//копируем gpci-тег в паспорт-4
+							playconpass[playerid] = -4;//текущий паспорт = -4 (регистрация)
+						}
+						else//иначе, если паспорт-4 НЕ пустой, то:
+						{
+							gPlayerLogged[playerid] = 1;//разрешение записи аккаунта
+							PlayerInfo[playerid][pPassLock] = 1;//блокировка паспорта
+							format(string,sizeof(string),"[pass] Игрок %s [%d] был кикнут - блокировка системой паспортов !",RealName[playerid],playerid);
+							print(string);
+							SendClientMessageToAll(COLOR_RED,string);
+							SetTimerEx("PlayKick", 300, 0, "i", playerid);
+							return 1;
+						}
+					}
+				}
+			}
+		}
+#endif
+#if (MOD4DINS >= 1)
+		if(playconpass[playerid] >= 1)//если использование паспорта, то:
+		{
+#endif
+#if (MOD4DINS == 1)
+			format(string,sizeof(string),"[pass] Игрок %s [%d] - используется паспорт: %d (из %d-го) , ошибок: %d (из 4-х).",
+			RealName[playerid],playerid,playconpass[playerid],MOD4DINS,PlayerInfo[playerid][pPassError]);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+			format(string,sizeof(string),"[pass] Игрок %s [%d] - используется паспорт: %d (из %d-х) , ошибок: %d (из 4-х).",
+			RealName[playerid],playerid,playconpass[playerid],MOD4DINS,PlayerInfo[playerid][pPassError]);
+#endif
+#if (MOD4DINS >= 1)
+			print(string);
+			SendClientMessage(playerid,COLOR_YELLOW,string);
+		}
+		if(playconpass[playerid] <= -1)//если регистрация паспорта, то:
+		{
+			playconpass[playerid] = playconpass[playerid] * -1;
+#endif
+#if (MOD4DINS == 1)
+			format(string,sizeof(string),"[pass] Игрок %s [%d] - зарегистрирован паспорт: %d (из %d-го) , ошибок: %d (из 4-х).",
+			RealName[playerid],playerid,playconpass[playerid],MOD4DINS,PlayerInfo[playerid][pPassError]);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+			format(string,sizeof(string),"[pass] Игрок %s [%d] - зарегистрирован паспорт: %d (из %d-х) , ошибок: %d (из 4-х).",
+			RealName[playerid],playerid,playconpass[playerid],MOD4DINS,PlayerInfo[playerid][pPassError]);
+#endif
+#if (MOD4DINS >= 1)
+			print(string);
+			SendClientMessage(playerid,COLOR_YELLOW,string);
+			new locdata22 = 0;
+			if(strcmp(PlayerInfo[playerid][pPass_data1], "---", false) != 0) { locdata22++; }
+			if(strcmp(PlayerInfo[playerid][pPass_data2], "---", false) != 0) { locdata22++; }
+			if(strcmp(PlayerInfo[playerid][pPass_data3], "---", false) != 0) { locdata22++; }
+			if(strcmp(PlayerInfo[playerid][pPass_data4], "---", false) != 0) { locdata22++; }
+			format(string,sizeof(string),"[pass] Зарегистрировано паспортов: %d , в случае регистрации паспорта %d - {AA3333}Ваш аккаунт",locdata22,MOD4DINS + 1);
+			SendClientMessage(playerid,COLOR_YELLOW,string);
+			SendClientMessage(playerid,COLOR_RED,"[pass] будет заблокирован системой паспортов - БЕЗ возможности восстановления !");
+		}
+#endif
+		gettime(timecor[0], timecor[1]);
+		getdate(timecor[2], timecor[3], timecor[4]);
+		TimCor();//коррекция времени
+		DatCor();//коррекция даты
+		switch(playconpass[playerid])
+		{
+		    case 0, 1:
+			{
+				format(PlayerInfo[playerid][pPass_inout1], 64, "[%02d:%02d - %02d/%02d/%04d] -",
+				timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);//время и дата входа паспорта-1
+				format(PlayerInfo[playerid][pPass_ver1], 32, "%s", FnGetClVers(playerid));//версия САМП-клиента паспорта-1
+				PlayerInfo[playerid][pPass_count1]++;//счётчик коннектов паспорта-1 +1
+			}
+		    case 2:
+			{
+				format(PlayerInfo[playerid][pPass_inout2], 64, "[%02d:%02d - %02d/%02d/%04d] -",
+				timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);//время и дата входа паспорта-2
+				format(PlayerInfo[playerid][pPass_ver2], 32, "%s", FnGetClVers(playerid));//версия САМП-клиента паспорта-2
+				PlayerInfo[playerid][pPass_count2]++;//счётчик коннектов паспорта-2 +1
+			}
+		    case 3:
+			{
+				format(PlayerInfo[playerid][pPass_inout3], 64, "[%02d:%02d - %02d/%02d/%04d] -",
+				timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);//время и дата входа паспорта-3
+				format(PlayerInfo[playerid][pPass_ver3], 32, "%s", FnGetClVers(playerid));//версия САМП-клиента паспорта-3
+				PlayerInfo[playerid][pPass_count3]++;//счётчик коннектов паспорта-3 +1
+			}
+		    case 4:
+			{
+				format(PlayerInfo[playerid][pPass_inout4], 64, "[%02d:%02d - %02d/%02d/%04d] -",
+				timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);//время и дата входа паспорта-4
+				format(PlayerInfo[playerid][pPass_ver4], 32, "%s", FnGetClVers(playerid));//версия САМП-клиента паспорта-4
+				PlayerInfo[playerid][pPass_count4]++;//счётчик коннектов паспорта-4 +1
+			}
+		}
 	}
 	if(PlayerInfo[playerid][pLock] == 1)
 	{
@@ -3820,6 +4966,7 @@ public OnPlayerLogin(playerid,password[])
 	skinstatplay[playerid] = 0;
 	nickstatcol[playerid] = 0;
 
+	scrnetcount[playerid] = 0;//обнуляем переменную контроля сетевых экранов
 	gPlayerLogged[playerid] = 1;
 	gPlayerAccount[playerid] = 1;
 	new dopper;
@@ -3955,7 +5102,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	new strdln[5000];
 	strdln[0]++;
 	strdln[0]--;
-   	new akk[256],ssss[256],igkey[256],tdreg[256],adrip[256];
+   	new akk[256],ssss[256];
 	//new playermoney;
 	//new sendername[MAX_PLAYER_NAME];
 	//new giveplayer[MAX_PLAYER_NAME];
@@ -4017,9 +5164,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	dcmd(removeallhcars, 14, cmdtext);
 	dcmd(sellallhouses, 13, cmdtext);
     dcmd(createhouse, 11, cmdtext);
-    dcmd(passhouse, 9, cmdtext);//просмотр пароля дома
-    dcmd(relhouses, 9, cmdtext);//перезагрузка системы домов
-    dcmd(lchouse, 7, cmdtext);//блокировка дома по его ИД
+    dcmd(passhouse, 9, cmdtext);//просмотреть пароль дома по ID
+    dcmd(relhouses, 9, cmdtext);//перезагрузить систему домов
+    dcmd(lchouse, 7, cmdtext);//заблокировать дом по ID
+    dcmd(rethouse, 8, cmdtext);//вернуть дом по ID на продажу
 	dcmd(removehouse, 11, cmdtext);
 	dcmd(changeprice, 11, cmdtext);
 	dcmd(changespawn, 11, cmdtext);
@@ -4501,6 +5649,18 @@ public OnPlayerCommandText(playerid, cmdtext[])
 						print(string);
 						SendAdminMessage(COLOR_YELLOW, string);
 						printf("[moneysys] Предыдущая сумма игрока %s [%d] : %d $", RealName[para1], para1, dopper44);
+					}
+				}
+				if(PlayerInfo[para1][pAdmin] <= 2 && dopper >= 3)
+				{
+					for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+					{
+						if(strcmp(RealName[para1], scrnetper[i], false) == 0)//если ник админа найден, то:
+						{
+							strdel(scrnetper[i], 0, 64);//очистка слота
+							strcat(scrnetper[i], "*** INV_PL_ID");
+							ScrNetPerSave(i);//запись изменённого слота в per-файл
+						}
 					}
 				}
 				if(PlayerInfo[para1][pAdmin] <= 1 && dopper >= 2)
@@ -5469,12 +6629,18 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 3)
     	{
-   			new data2[54],dopper;
-			data2[53] = 0;//переменная проверки блокировки аккаунта
+   			new datacon, dopper;
+			datacon = 0;//переменная проверки блокировки аккаунта
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /unbanakk [имя аккаунта]");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -5482,202 +6648,9 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
 				return 1;
 			}
-#if (MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
-			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-#endif
-#if (MOD90INS == 1)
-			new mgrakk = 0;
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				mgrakk = 1;
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 20, buffer, 32); data2[12] = strval(buffer);//VIP
-					db_get_field(querydb[playerid], 21, buffer, 32); data2[13] = strval(buffer);//Lock
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
 			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 			{
-				if(IsPlayerConnected(i))
+				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 				{
 					if(strcmp(akk, RealName[i], false) == 0)
 					{
@@ -5687,14 +6660,28 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					}
 				}
 			}
-			new fadm;
-			if(data2[1] < 0)
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 			{
-				fadm = data2[1] * -1;
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
+				return 1;
+			}
+#if (MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+				return 1;
+			}
+#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
 			}
 			else
 			{
-				fadm = data2[1];
+				fadm = admData[playerid][dAdmin];
 			}
 			if(fadm >= 1 && PlayerInfo[playerid][pAdmin] == 3)//проверка аккаунта на админку
 			{
@@ -5710,185 +6697,42 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
-			if(data2[13] == 1 && data2[12] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
+			if(admData[playerid][dLock] == 1 && admData[playerid][dVIP] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
 			{
-				data2[12] = 0;//убрать статус депортации
+				admData[playerid][dVIP] = 0;//убрать статус депортации
 			}
-			if(data2[13] == 0)//если аккаунт НЕ был заблокирован, то:
+			if(admData[playerid][dLock] == 0)//если аккаунт НЕ был заблокирован, то:
 			{
-				data2[53] = 1;//записываем в переменную проверки блокировки аккаунта 1
+				datacon = 1;//записываем в переменную проверки блокировки аккаунта 1
 			}
-			data2[13] = 0;//сброс блокировки аккаунта
+			admData[playerid][dLock] = 0;//сброс блокировки аккаунта
 			strdel(ssss, 0, 256);//сборка RCON-команды разбана
 			strcat(ssss, "unbanip ");
-			strcat(ssss, adrip);
+			strcat(ssss, admData[playerid][dIPAdr]);
 			SendRconCommand(ssss);//RCON-команда разбана
 			SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string999[256];
-			format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-			if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-//---------------------------------- конец -------------------------------------
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(gngakkrd == 1)
-			{
-				fremove(string999);
-			}
-//---------------------------------- конец -------------------------------------
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			if(mgrakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-			{
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string999);
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт был зарегистрирован в SQLite)
-			{
-				if(gngakkrd == 1)//если был найден аккаунт банды, то:
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,Lock = %d,",data2[12],data2[13]);//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d WHERE (Name = '%s')", strdln, data2[14],data2[15],akk);
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-					if(gngakkrd == 1)
-					{
-						fremove(string999);
-					}
-				}
-				else//иначе: (если НЕ был найден аккаунт банды)
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,Lock = %d WHERE (Name = '%s')",data2[12],data2[13],akk);//создаём запрос БД
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-				}
-			}
+			format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,", admData[playerid][dVIP]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sLock = %d WHERE (Name = '%s')", strdln, admData[playerid][dLock], akk);
+			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
-			if(data2[53] == 1)//если переменная проверки блокировки аккаунта = 1, то:
+			if(datacon == 1)//если переменная проверки блокировки аккаунта = 1, то:
 			{
 				format(ssss,sizeof(ssss)," Аккаунт игрока [%s] не заблокирован (не забанен) !", akk);
 				print(ssss);
 				SendClientMessage(playerid, COLOR_RED, ssss);
-				format(ssss,sizeof(ssss)," ( IP: [%s] был удалён из файла samp.ban ) !", adrip);
+				format(ssss,sizeof(ssss)," ( IP: [%s] был удалён из файла samp.ban ) !", admData[playerid][dIPAdr]);
 				print(ssss);
 				SendClientMessage(playerid, COLOR_GREEN, ssss);
 			}
 			else//иначе:
 			{
-				format(ssss,sizeof(ssss)," *** Админ %s разбанил аккаунт игрока [%s] ( IP: [%s] ) .", RealName[playerid], akk, adrip);
+				format(ssss,sizeof(ssss)," *** Админ %s разбанил аккаунт игрока [%s] ( IP: [%s] ) .", RealName[playerid], akk, admData[playerid][dIPAdr]);
 				print(ssss);
 				SendAdminMessage(COLOR_GREEN, ssss);
 				format(ssss,sizeof(ssss)," *** Админ %s разбанил аккаунт игрока [%s] .", RealName[playerid], akk);
@@ -5904,7 +6748,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			new string222[256], string333[256], idfile;
 			idfile = 0;
 			new ip333[128];
-			ip333 = ConvIP(adrip);
+			ip333 = ConvIP(admData[playerid][dIPAdr]);
 			format(string222,sizeof(string222),"banlist/players/%s.ini",akk);
 			if(fexist(string222))//читаем аккаунт из бан-листа (если файл существует)
 			{
@@ -5940,7 +6784,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			if(fexist(string222))
 			{
 				fremove(string222);//удаляем IP-адрес из бан-листа
-				format(ssss,sizeof(ssss)," ( IP-адрес [%s] был удалён из бан-листа ) !", adrip);
+				format(ssss,sizeof(ssss)," ( IP-адрес [%s] был удалён из бан-листа ) !", admData[playerid][dIPAdr]);
 				print(ssss);
 				SendClientMessage(playerid, COLOR_GREEN, ssss);
 			}
@@ -6278,11 +7122,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 1)
     	{
-   			new data2[53],dopper;
+   			new dopper;
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /banakk [имя аккаунта] [причина]");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -6290,214 +7140,9 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
 				return 1;
 			}
-			new length = strlen(cmdtext);
-			while ((idx < length) && (cmdtext[idx] <= ' '))
-			{
-				idx++;
-			}
-			new offset = idx;
-			new result[64];
-			while ((idx < length) && ((idx - offset) < (sizeof(result) - 1)))
-			{
-				result[idx - offset] = cmdtext[idx];
-				idx++;
-			}
-			result[idx - offset] = EOS;
-#if (MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
-			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-#endif
-#if (MOD90INS == 1)
-			new mgrakk = 0;
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				mgrakk = 1;
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 21, buffer, 32); data2[13] = strval(buffer);//Lock
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
 			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 			{
-   				if(IsPlayerConnected(i))
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 		    	{
 					if(strcmp(akk, RealName[i], false) == 0)
 					{
@@ -6507,14 +7152,28 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					}
 				}
 			}
-			new fadm;
-			if(data2[1] < 0)
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 			{
-				fadm = data2[1] * -1;
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
+				return 1;
+			}
+#if (MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+				return 1;
+			}
+#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
 			}
 			else
 			{
-				fadm = data2[1];
+				fadm = admData[playerid][dAdmin];
 			}
 			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
 			{
@@ -6530,172 +7189,42 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
-			if(data2[13] == 1)//если аккаунт был заблокирован, то:
+			if(admData[playerid][dLock] == 1)//если аккаунт был заблокирован, то:
 			{
 				format(ssss,sizeof(ssss)," Аккаунт игрока [%s] уже заблокирован (забанен) !", akk);
 				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
-			data2[13] = 1;//блокировка аккаунта
+			new length = strlen(cmdtext);
+			while ((idx < length) && (cmdtext[idx] <= ' '))
+			{
+				idx++;
+			}
+			new offset = idx;
+			new result[64];
+			while ((idx < length) && ((idx - offset) < (sizeof(result) - 1)))
+			{
+				result[idx - offset] = cmdtext[idx];
+				idx++;
+			}
+			result[idx - offset] = EOS;
+			admData[playerid][dLock] = 1;//блокировка аккаунта
 			strdel(ssss, 0, 256);//сборка RCON-команды бана
 			strcat(ssss, "banip ");
-			strcat(ssss, adrip);
+			strcat(ssss, admData[playerid][dIPAdr]);
 			SendRconCommand(ssss);//RCON-команда бана
 			SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string888[256];
-			format(string888,sizeof(string888),"gangs/players/%s.ini",akk);
-			if(fexist(string888))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-//---------------------------------- конец -------------------------------------
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(gngakkrd == 1)
-			{
-				fremove(string888);
-			}
-//---------------------------------- конец -------------------------------------
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			if(mgrakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-			{
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string888);
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт был зарегистрирован в SQLite)
-			{
-				if(gngakkrd == 1)//если был найден аккаунт банды, то:
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d,",data2[13]);//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d WHERE (Name = '%s')", strdln, data2[14],data2[15],akk);
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-					if(gngakkrd == 1)
-					{
-						fremove(string888);
-					}
-				}
-				else//иначе: (если НЕ был найден аккаунт банды)
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d WHERE (Name = '%s')",data2[13],akk);//создаём запрос БД
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-				}
-			}
+			format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d ", admData[playerid][dLock]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
+			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
-			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] ( IP: [%s] ) , причина: %s", RealName[playerid], akk, adrip, result);
+			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] ( IP: [%s] ) , причина: %s", RealName[playerid], akk, admData[playerid][dIPAdr], result);
 			print(ssss);
 			SendAdminMessage(COLOR_RED, ssss);
 			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] , причина: %s", RealName[playerid], akk, result);
@@ -6723,7 +7252,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			DatCor();//коррекция даты
 
 			new string999[256], stringdop[256];
-			format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",adrip,timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
+			format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",admData[playerid][dIPAdr],timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
 			format(string999,sizeof(string999),"banlist/players/%s.ini",akk);
 			new File: hFile44 = fopen(string999, io_write);//запись файла бан-листа
 			if (hFile44)
@@ -6744,16 +7273,77 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 1)
     	{
-   			new data2[53],dopper,csut,csut22;
+   			new dopper, csut, csut22;
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /banakktm [имя аккаунта] [число суток] [причина]");
 				return 1;
 			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+				return 1;
+			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
 			{
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
+				return 1;
+			}
+			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
+			{
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
+		    	{
+					if(strcmp(akk, RealName[i], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
+						SendClientMessage(playerid, COLOR_RED, ssss);
+						return 1;
+					}
+				}
+			}
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+			{
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
+				return 1;
+			}
+#if (MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+				return 1;
+			}
+#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
+			}
+			else
+			{
+				fadm = admData[playerid][dAdmin];
+			}
+			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
+			{
+				if(fadm == 5)//подмена 5-го левела на 4-й
+				{
+					dopper = 4;
+				}
+				else
+				{
+					dopper = fadm;
+				}
+				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
+				SendClientMessage(playerid, COLOR_RED, ssss);
+				return 1;
+			}
+			if(admData[playerid][dLock] == 1)//если аккаунт был заблокирован, то:
+			{
+				format(ssss,sizeof(ssss)," Аккаунт игрока [%s] уже заблокирован (забанен) !", akk);
+				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
 			tmp = strtok(cmdtext, idx);
@@ -6776,399 +7366,23 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				idx++;
 			}
 			result[idx - offset] = EOS;
-#if (MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
-			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-#endif
-#if (MOD90INS == 1)
-			new mgrakk = 0;
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				mgrakk = 1;
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 21, buffer, 32); data2[13] = strval(buffer);//Lock
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
-			{
-   				if(IsPlayerConnected(i))
-		    	{
-					if(strcmp(akk, RealName[i], false) == 0)
-					{
-						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
-						SendClientMessage(playerid, COLOR_RED, ssss);
-						return 1;
-					}
-				}
-			}
-			new fadm;
-			if(data2[1] < 0)
-			{
-				fadm = data2[1] * -1;
-			}
-			else
-			{
-				fadm = data2[1];
-			}
-			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
-			{
-				if(fadm == 5)//подмена 5-го левела на 4-й
-				{
-					dopper = 4;
-				}
-				else
-				{
-					dopper = fadm;
-				}
-				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
-				SendClientMessage(playerid, COLOR_RED, ssss);
-				return 1;
-			}
-			if(data2[13] == 1)//если аккаунт был заблокирован, то:
-			{
-				format(ssss,sizeof(ssss)," Аккаунт игрока [%s] уже заблокирован (забанен) !", akk);
-				SendClientMessage(playerid, COLOR_RED, ssss);
-				return 1;
-			}
-			data2[13] = 1;//блокировка аккаунта
+			admData[playerid][dLock] = 1;//блокировка аккаунта
 			strdel(ssss, 0, 256);//сборка RCON-команды бана
 			strcat(ssss, "banip ");
-			strcat(ssss, adrip);
+			strcat(ssss, admData[playerid][dIPAdr]);
 			SendRconCommand(ssss);//RCON-команда бана
 			SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string888[256];
-			format(string888,sizeof(string888),"gangs/players/%s.ini",akk);
-			if(fexist(string888))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-//---------------------------------- конец -------------------------------------
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(gngakkrd == 1)
-			{
-				fremove(string888);
-			}
-//---------------------------------- конец -------------------------------------
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			if(mgrakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-			{
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string888);
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт был зарегистрирован в SQLite)
-			{
-				if(gngakkrd == 1)//если был найден аккаунт банды, то:
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d,",data2[13]);//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d WHERE (Name = '%s')", strdln, data2[14],data2[15],akk);
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-					if(gngakkrd == 1)
-					{
-						fremove(string888);
-					}
-				}
-				else//иначе: (если НЕ был найден аккаунт банды)
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d WHERE (Name = '%s')",data2[13],akk);//создаём запрос БД
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-				}
-			}
+			format(strdln, sizeof(strdln), "UPDATE Players SET Lock = %d ", admData[playerid][dLock]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
+			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
-			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] на %d суток ( IP: [%s] ) , причина: %s", RealName[playerid], akk, csut, adrip, result);
+			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] на %d суток ( IP: [%s] ) , причина: %s", RealName[playerid], akk, csut, admData[playerid][dIPAdr], result);
 			print(ssss);
 			SendAdminMessage(COLOR_RED, ssss);
 			format(ssss,sizeof(ssss)," *** Админ %s забанил аккаунт игрока [%s] на %d суток , причина: %s", RealName[playerid], akk, csut, result);
@@ -7211,7 +7425,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					{
 						new var[64];
 						format(var, 64, "Login=%s\n",akk);fwrite(hFile55, var);
-						format(var, 64, "IPAdr=%s\n",adrip);fwrite(hFile55, var);
+						format(var, 64, "IPAdr=%s\n",admData[playerid][dIPAdr]);fwrite(hFile55, var);
 						format(var, 64, "Dataunban=%d\n",csut22);fwrite(hFile55, var);
 						fclose(hFile55);
 					}
@@ -7231,7 +7445,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 
 			new stringdop[256];
-			format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",adrip,timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
+			format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",admData[playerid][dIPAdr],timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
 			format(string999,sizeof(string999),"banlist/players/%s.ini",akk);
 			new File: hFile44 = fopen(string999, io_write);//запись файла бан-листа
 			if (hFile44)
@@ -7445,20 +7659,20 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 4)
     	{
-   			new data2[54];
-#if (MOD90INS == 1)
-   			new dddata2[3];
-#endif
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
-				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /admakk [имя аккаунта] [левел(0-4)] ( дополнительно:");
-				SendClientMessage(playerid, COLOR_GRAD2, " [VIP(0-2), депортация(3), разрешение приёма PM(4)] [скрытость] [сумма] ),");
-#if (MOD90INS == 1)
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /admakk [имя аккаунта] [админ LVL(0-4)] ( дополнительно:");
+				SendClientMessage(playerid, COLOR_GRAD2, " [VIP LVL(0-2), депортация(3), разрешение приёма PM(4)] [скрытость] [сумма] ),");
 				SendClientMessage(playerid, COLOR_GRAD2, " или /admakk [имя аккаунта] 98 - экспортировать аккаунт в файл,");
-#endif
 				SendClientMessage(playerid, COLOR_GRAD2, " или /admakk [имя аккаунта] 99 [пароль] - сменить пароль,");
 				SendClientMessage(playerid, COLOR_GRAD2, " или /admakk [имя аккаунта] 100 - просмотреть аккаунт");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -7494,28 +7708,13 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				}
 			}
 #endif
-			new entpass[256], level, oldlevel, vipur1, vipur2;
+			new entpass[64], level, oldlevel, vipur1, vipur2;
 			new scrit1, scrit2, summ1, summ2, dopper;
 			dopper = 0;
 			tmp = strtok(cmdtext, idx);
-#if (MOD90INS == 0)
 			if(!strlen(tmp))
 			{
-				SendClientMessage(playerid, COLOR_RED, " [левел(0-4), или 99, или 100] ( дополнительно: [VIP(0-2),");
-				SendClientMessage(playerid, COLOR_RED, " депортация(3), разрешение приёма PM(4)] [скрытость] [сумма] ) !");
-				return 1;
-			}
-			level = strval(tmp);
-			if((level < 0 || level > 4) && level != 99 && level != 100)
-			{
-				SendClientMessage(playerid, COLOR_RED, " Уровень админа должен быть от 0 до 4 , (или 99, или 100) !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			if(!strlen(tmp))
-			{
-				SendClientMessage(playerid, COLOR_RED, " [левел(0-4), или 98, или 99, или 100] ( дополнительно: [VIP(0-2),");
+				SendClientMessage(playerid, COLOR_RED, " [админ LVL(0-4), или 98, или 99, или 100] ( дополнительно: [VIP LVL(0-2),");
 				SendClientMessage(playerid, COLOR_RED, " депортация(3), разрешение приёма PM(4)] [скрытость] [сумма] ) !");
 				return 1;
 			}
@@ -7525,7 +7724,6 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, " Уровень админа должен быть от 0 до 4 , (или 98, или 99, или 100) !");
 				return 1;
 			}
-#endif
 			if(level == 99)
 			{
 				tmp = strtok(cmdtext, idx);
@@ -7545,7 +7743,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					SendClientMessage(playerid, COLOR_RED, " символы: от a до z , от A до Z , и цифры от 0 до 9 !");
 					return 1;
 				}
-				strdel(entpass, 0, 256);
+				strdel(entpass, 0, 64);
 				strcat(entpass, tmp);
 			}
 			else
@@ -7561,7 +7759,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					vipur2 = strval(tmp);
 					if(vipur2 < 0 || vipur2 > 4)
 					{
-	 					SendClientMessage(playerid, COLOR_RED, " Параметр должен быть от 0 до 4 !");
+	 					SendClientMessage(playerid, COLOR_RED, " VIP LVL должен быть от 0 до 4 !");
 						return 1;
 					}
 				}
@@ -7591,379 +7789,13 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					summ2 = strval(tmp);
 				}
 			}
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
+				SendClientMessage(playerid, COLOR_RED, " Ошибка чтения аккаунта игрока !");
+				return 1;
 			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string999[256];
-			format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-			if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-			if(gngakkrd == 1)
-			{
-				new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-				if (hFile)
-				{
-					new var[32];
-					format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-					format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-					format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-					format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-					format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-					format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-					format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-					format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-					format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-					format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-					format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-					format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-					format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-					format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-					format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-					format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-					format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-					format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-					format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//					format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//					format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//					format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//					format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//					format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//					format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//					format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//					format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//					format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-					fclose(hFile);
-				}
-				fremove(string999);
-			}
-//---------------------------------- конец -------------------------------------
-#endif
-#if (MOD90INS == 1)
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				new gngakkrd = 0;
-				new string999[256];
-				format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-				if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-				{
-					gngakkrd = 1;
-					new string333[256];
-					format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-					new File: UserFile333 = fopen(string333, io_read);//чтение файла
-					new key333[ 256 ] , val333[ 256 ];
-					new Data333[ 256 ];
-					while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-					{
-						key333 = ini_GetKey( Data333 );
-						if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-						if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-					}
-					fclose(UserFile333);
-				}
-//---------------------------------- конец -------------------------------------
-
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-				dddata2[0] = 0;//обнуляем дату последнего входа на сервер (для мониторинга)
-				dddata2[1] = 0;
-				dddata2[2] = 0;
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string999);//удаляем аккаунт из системы банд
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 2, igkey, 256);//Key
-					db_get_field(querydb[playerid], 3, tdreg, 256);//TDReg
-					db_get_field(querydb[playerid], 4, buffer, 32); dddata2[0] = strval(buffer);//DEndConD
-					db_get_field(querydb[playerid], 5, buffer, 32); dddata2[1] = strval(buffer);//DEndConM
-					db_get_field(querydb[playerid], 6, buffer, 32); dddata2[2] = strval(buffer);//DEndConY
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 8, buffer, 32); data2[0] = strval(buffer);//MinLog
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 10, buffer, 32); data2[2] = strval(buffer);//AdminShadow
-					db_get_field(querydb[playerid], 11, buffer, 32); data2[3] = strval(buffer);//AdminLive
-					db_get_field(querydb[playerid], 13, buffer, 32); data2[5] = strval(buffer);//Prison
-					db_get_field(querydb[playerid], 14, buffer, 32); data2[6] = strval(buffer);//Prisonsec
-					db_get_field(querydb[playerid], 15, buffer, 32); data2[7] = strval(buffer);//Muted
-					db_get_field(querydb[playerid], 16, buffer, 32); data2[8] = strval(buffer);//Mutedsec
-					db_get_field(querydb[playerid], 17, buffer, 32); data2[9] = strval(buffer);//Money
-					db_get_field(querydb[playerid], 18, buffer, 32); data2[10] = strval(buffer);//Kills
-					db_get_field(querydb[playerid], 19, buffer, 32); data2[11] = strval(buffer);//Deaths
-					db_get_field(querydb[playerid], 20, buffer, 32); data2[12] = strval(buffer);//VIP
-					db_get_field(querydb[playerid], 21, buffer, 32); data2[13] = strval(buffer);//Lock
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_get_field(querydb[playerid], 24, buffer, 32); data2[27] = strval(buffer);//Weapon_slot0
-					db_get_field(querydb[playerid], 25, buffer, 32); data2[28] = strval(buffer);//Weapon_slot1
-					db_get_field(querydb[playerid], 26, buffer, 32); data2[29] = strval(buffer);//Weapon_slot2
-					db_get_field(querydb[playerid], 27, buffer, 32); data2[30] = strval(buffer);//Weapon_slot3
-					db_get_field(querydb[playerid], 28, buffer, 32); data2[31] = strval(buffer);//Weapon_slot4
-					db_get_field(querydb[playerid], 29, buffer, 32); data2[32] = strval(buffer);//Weapon_slot5
-					db_get_field(querydb[playerid], 30, buffer, 32); data2[33] = strval(buffer);//Weapon_slot6
-					db_get_field(querydb[playerid], 31, buffer, 32); data2[34] = strval(buffer);//Weapon_slot7
-					db_get_field(querydb[playerid], 32, buffer, 32); data2[35] = strval(buffer);//Weapon_slot8
-					db_get_field(querydb[playerid], 33, buffer, 32); data2[36] = strval(buffer);//Weapon_slot9
-					db_get_field(querydb[playerid], 34, buffer, 32); data2[37] = strval(buffer);//Weapon_slot10
-					db_get_field(querydb[playerid], 35, buffer, 32); data2[38] = strval(buffer);//Weapon_slot11
-					db_get_field(querydb[playerid], 36, buffer, 32); data2[39] = strval(buffer);//Weapon_slot12
-					db_get_field(querydb[playerid], 37, buffer, 32); data2[40] = strval(buffer);//Ammo_slot0
-					db_get_field(querydb[playerid], 38, buffer, 32); data2[41] = strval(buffer);//Ammo_slot1
-					db_get_field(querydb[playerid], 39, buffer, 32); data2[42] = strval(buffer);//Ammo_slot2
-					db_get_field(querydb[playerid], 40, buffer, 32); data2[43] = strval(buffer);//Ammo_slot3
-					db_get_field(querydb[playerid], 41, buffer, 32); data2[44] = strval(buffer);//Ammo_slot4
-					db_get_field(querydb[playerid], 42, buffer, 32); data2[45] = strval(buffer);//Ammo_slot5
-					db_get_field(querydb[playerid], 43, buffer, 32); data2[46] = strval(buffer);//Ammo_slot6
-					db_get_field(querydb[playerid], 44, buffer, 32); data2[47] = strval(buffer);//Ammo_slot7
-					db_get_field(querydb[playerid], 45, buffer, 32); data2[48] = strval(buffer);//Ammo_slot8
-					db_get_field(querydb[playerid], 46, buffer, 32); data2[49] = strval(buffer);//Ammo_slot9
-					db_get_field(querydb[playerid], 47, buffer, 32); data2[50] = strval(buffer);//Ammo_slot10
-					db_get_field(querydb[playerid], 48, buffer, 32); data2[51] = strval(buffer);//Ammo_slot11
-					db_get_field(querydb[playerid], 49, buffer, 32); data2[52] = strval(buffer);//Ammo_slot12
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-			new fadm;
-			if(data2[1] < 0)
-			{
-				fadm = data2[1] * -1;
-			}
-			else
-			{
-				fadm = data2[1];
-			}
-			new dopdata2;
-			if(data2[14] == -600)
-			{
-				dopdata2 = 0;
-			}
-			else
-			{
-				dopdata2 = data2[14];
-			}
-#if (MOD90INS == 1)
 			if(level == 98)
 			{
 				new locstr[128];
@@ -7975,63 +7807,86 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				new File: hFile = fopen(locstr, io_write);//запись экспортированного аккаунта
 				if (hFile)
 				{
-					new var[32];
-					format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-					format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-					format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-					format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-					format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-					format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-					format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-					format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-					format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-					format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-					format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-					format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-					format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-					format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-					format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-					format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-					format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-					format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-					format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//					format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//					format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//					format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//					format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//					format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//					format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//					format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//					format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//					format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
+					new var[128];
+					format(var, 128, "Key=%s\n",admData[playerid][dKey]);fwrite(hFile, var);
+					format(var, 128, "TDReg=%s\n",admData[playerid][dTDReg]);fwrite(hFile, var);
+					format(var, 128, "DEndConD=%d\n",admData[playerid][dEndConD]);fwrite(hFile, var);
+					format(var, 128, "DEndConM=%d\n",admData[playerid][dEndConM]);fwrite(hFile, var);
+					format(var, 128, "DEndConY=%d\n",admData[playerid][dEndConY]);fwrite(hFile, var);
+					format(var, 128, "IPAdr=%s\n",admData[playerid][dIPAdr]);fwrite(hFile, var);
+					format(var, 128, "MinLog=%d\n",admData[playerid][dMinlog]);fwrite(hFile, var);
+					format(var, 128, "AdminLevel=%d\n",admData[playerid][dAdmin]);fwrite(hFile, var);
+					format(var, 128, "AdminShadow=%d\n",admData[playerid][dAdmshad]);fwrite(hFile, var);
+					format(var, 128, "AdminLive=%d\n",admData[playerid][dAdmlive]);fwrite(hFile, var);
+					format(var, 128, "Registered=%d\n",admData[playerid][dReg]);fwrite(hFile, var);
+					format(var, 128, "Prison=%d\n",admData[playerid][dPrison]);fwrite(hFile, var);
+					format(var, 128, "Prisonsec=%d\n",admData[playerid][dPrisonsec]);fwrite(hFile, var);
+					format(var, 128, "Muted=%d\n",admData[playerid][dMuted]);fwrite(hFile, var);
+					format(var, 128, "Mutedsec=%d\n",admData[playerid][dMutedsec]);fwrite(hFile, var);
+					format(var, 128, "Money=%d\n",admData[playerid][dMoney]);fwrite(hFile, var);
+					format(var, 128, "Kills=%d\n",admData[playerid][dKills]);fwrite(hFile, var);
+					format(var, 128, "Deaths=%d\n",admData[playerid][dDeaths]);fwrite(hFile, var);
+					format(var, 128, "VIP=%d\n",admData[playerid][dVIP]);fwrite(hFile, var);
+					format(var, 128, "Lock=%d\n",admData[playerid][dLock]);fwrite(hFile, var);
+					format(var, 128, "Gang=%d\n",admData[playerid][dGang]);fwrite(hFile, var);
+					format(var, 128, "GangLvl=%d\n",admData[playerid][dGangLvl]);fwrite(hFile, var);
+//					format(var, 128, "PISTOL=%d\n",admData[playerid][dPISTOL]);fwrite(hFile, var);
+//					format(var, 128, "PISTOL_SILENCED=%d\n",admData[playerid][dPISTOL_SILENCED]);fwrite(hFile, var);
+//					format(var, 128, "DESERT_EAGLE=%d\n",admData[playerid][dDESERT_EAGLE]);fwrite(hFile, var);
+//					format(var, 128, "SHOTGUN=%d\n",admData[playerid][dSHOTGUN]);fwrite(hFile, var);
+//					format(var, 128, "SAWNOFF_SHOTGUN=%d\n",admData[playerid][dSAWNOFF_SHOTGUN]);fwrite(hFile, var);
+//					format(var, 128, "SPAS12_SHOTGUN=%d\n",admData[playerid][dSPAS12_SHOTGUN]);fwrite(hFile, var);
+//					format(var, 128, "MICRO_UZI=%d\n",admData[playerid][dMICRO_UZI]);fwrite(hFile, var);
+//					format(var, 128, "MP5=%d\n",admData[playerid][dMP5]);fwrite(hFile, var);
+//					format(var, 128, "AK47=%d\n",admData[playerid][dAK47]);fwrite(hFile, var);
+//					format(var, 128, "M4=%d\n",admData[playerid][dM4]);fwrite(hFile, var);
+//					format(var, 128, "SNIPERRIFLE=%d\n",admData[dlayerid][pSNIPERRIFLE]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot0=%d\n",admData[playerid][dWeapon_slot0]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot1=%d\n",admData[playerid][dWeapon_slot1]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot2=%d\n",admData[playerid][dWeapon_slot2]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot3=%d\n",admData[playerid][dWeapon_slot3]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot4=%d\n",admData[playerid][dWeapon_slot4]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot5=%d\n",admData[playerid][dWeapon_slot5]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot6=%d\n",admData[playerid][dWeapon_slot6]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot7=%d\n",admData[playerid][dWeapon_slot6]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot8=%d\n",admData[playerid][dWeapon_slot8]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot9=%d\n",admData[playerid][dWeapon_slot9]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot10=%d\n",admData[playerid][dWeapon_slot10]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot11=%d\n",admData[playerid][dWeapon_slot11]);fwrite(hFile, var);
+					format(var, 128, "Weapon_slot12=%d\n",admData[playerid][dWeapon_slot12]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot0=%d\n",admData[playerid][dAmmo_slot0]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot1=%d\n",admData[playerid][dAmmo_slot1]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot2=%d\n",admData[playerid][dAmmo_slot2]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot3=%d\n",admData[playerid][dAmmo_slot3]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot4=%d\n",admData[playerid][dAmmo_slot4]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot5=%d\n",admData[playerid][dAmmo_slot5]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot6=%d\n",admData[playerid][dAmmo_slot6]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot7=%d\n",admData[playerid][dAmmo_slot7]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot8=%d\n",admData[playerid][dAmmo_slot8]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot9=%d\n",admData[playerid][dAmmo_slot9]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot10=%d\n",admData[playerid][dAmmo_slot10]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot11=%d\n",admData[playerid][dAmmo_slot11]);fwrite(hFile, var);
+					format(var, 128, "Ammo_slot12=%d\n",admData[playerid][dAmmo_slot12]);fwrite(hFile, var);
+					format(var, 128, "Pass_data1=%s\n",admData[playerid][dPass_data1]);fwrite(hFile, var);
+					format(var, 128, "Pass_inout1=%s\n",admData[playerid][dPass_inout1]);fwrite(hFile, var);
+					format(var, 128, "Pass_ver1=%s\n",admData[playerid][dPass_ver1]);fwrite(hFile, var);
+					format(var, 128, "Pass_count1=%d\n",admData[playerid][dPass_count1]);fwrite(hFile, var);
+					format(var, 128, "Pass_data2=%s\n",admData[playerid][dPass_data2]);fwrite(hFile, var);
+					format(var, 128, "Pass_inout2=%s\n",admData[playerid][dPass_inout2]);fwrite(hFile, var);
+					format(var, 128, "Pass_ver2=%s\n",admData[playerid][dPass_ver2]);fwrite(hFile, var);
+					format(var, 128, "Pass_count2=%d\n",admData[playerid][dPass_count2]);fwrite(hFile, var);
+					format(var, 128, "Pass_data3=%s\n",admData[playerid][dPass_data3]);fwrite(hFile, var);
+					format(var, 128, "Pass_inout3=%s\n",admData[playerid][dPass_inout3]);fwrite(hFile, var);
+					format(var, 128, "Pass_ver3=%s\n",admData[playerid][dPass_ver3]);fwrite(hFile, var);
+					format(var, 128, "Pass_count3=%d\n",admData[playerid][dPass_count3]);fwrite(hFile, var);
+					format(var, 128, "Pass_data4=%s\n",admData[playerid][dPass_data4]);fwrite(hFile, var);
+					format(var, 128, "Pass_inout4=%s\n",admData[playerid][dPass_inout4]);fwrite(hFile, var);
+					format(var, 128, "Pass_ver4=%s\n",admData[playerid][dPass_ver4]);fwrite(hFile, var);
+					format(var, 128, "Pass_count4=%d\n",admData[playerid][dPass_count4]);fwrite(hFile, var);
+					format(var, 128, "PassMode=%d\n",admData[playerid][dPassMode]);fwrite(hFile, var);
+					format(var, 128, "PassDel=%d\n",admData[playerid][dPassDel]);fwrite(hFile, var);
+					format(var, 128, "PassLock=%d\n",admData[playerid][dPassLock]);fwrite(hFile, var);
+					format(var, 128, "PassError=%d\n",admData[playerid][dPassError]);fwrite(hFile, var);
 					fclose(hFile);
 				}
 				if(!fexist(locstr))//если аккаунт НЕ был экспортирован, то:
@@ -8047,22 +7902,40 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				}
 				return 1;
 			}
-#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
+			}
+			else
+			{
+				fadm = admData[playerid][dAdmin];
+			}
 			if(level == 100)
 			{
 				new dopdata44;
 				dopdata44 = 0;
 				for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 				{
-	   				if(IsPlayerConnected(i))
+	   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 			    	{
 						if(strcmp(akk, RealName[i], false) == 0) { dopdata44 = 1; }
 					}
 				}
-				data2[53] = 0;//депортация = 0
-				if(data2[12] == 3)//если VIP = 3, то:
+				new datadep;
+				datadep = 0;//депортация = 0
+				if(admData[playerid][dVIP] == 3)//если VIP = 3, то:
 				{
-					data2[53] = 1;//депортация = 1
+					datadep = 1;//депортация = 1
+				}
+				new datagang;
+				if(admData[playerid][dGang] == -600)
+				{
+					datagang = 0;
+				}
+				else
+				{
+					datagang = admData[playerid][dGang];
 				}
 				printf(" *** Админ %s [%d] просмотрел аккаунт игрока %s .", RealName[playerid], playerid, akk);
 
@@ -8073,19 +7946,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				{
 					SendClientMessage(playerid, COLOR_LIGHTRED, " Внимание !!! Аккаунт игрока On-Line !");
 				}
-				format(ssss,sizeof(ssss)," Время и дата регистрации: [ %s ]", tdreg);
+				format(ssss,sizeof(ssss)," Время и дата регистрации: [ %s ]", admData[playerid][dTDReg]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
-#if (MOD90INS == 1)
-				format(ssss,sizeof(ssss)," Дата последнего входа на сервер: [ %02d/%02d/%04d ]", dddata2[0],dddata2[1],dddata2[2]);
+				format(ssss,sizeof(ssss)," Дата последнего входа на сервер: [ %02d/%02d/%04d ]", admData[playerid][dEndConD],admData[playerid][dEndConM],admData[playerid][dEndConY]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
-#endif
-				format(ssss,sizeof(ssss)," Пароль: [%s] IP: [%s] Админ LVL: [%d] Скрытость админа: [%d]", igkey,adrip,fadm,data2[2]);
+				format(ssss,sizeof(ssss)," Пароль: [%s] IP: [%s] Админ LVL: [%d] Скрытость админа: [%d]", admData[playerid][dKey],admData[playerid][dIPAdr],fadm,admData[playerid][dAdmshad]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
-				format(ssss,sizeof(ssss)," Посадок в тюрьму: [%d] Секунд тюрьмы: [%d] Число затыков: [%d] Секунд затыка: [%d]", data2[5],data2[6],data2[7],data2[8]);
+				format(ssss,sizeof(ssss)," Посадок в тюрьму: [%d] Секунд тюрьмы: [%d] Число затыков: [%d] Секунд затыка: [%d]", admData[playerid][dPrison],admData[playerid][dPrisonsec],admData[playerid][dMuted],admData[playerid][dMutedsec]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
-				format(ssss,sizeof(ssss)," Денег: [%d $] Убийств: [%d] Смертей: [%d] VIP LVL: [%d] Блокировка аккаунта: [%d]", data2[9],data2[10],data2[11],data2[12],data2[13]);
+				format(ssss,sizeof(ssss)," Денег: [%d $] Убийств: [%d] Смертей: [%d] VIP LVL: [%d] Блокировка аккаунта: [%d]", admData[playerid][dMoney],admData[playerid][dKills],admData[playerid][dDeaths],admData[playerid][dVIP],admData[playerid][dLock]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
-				format(ssss,sizeof(ssss)," Минут на сервере: [%d] Бессмертие: [%d] ( дополнительно: Депортация: [%d] )", data2[0],data2[3],data2[53]);
+				format(ssss,sizeof(ssss)," Минут на сервере: [%d] Бессмертие: [%d] ( дополнительно: Депортация: [%d] )", admData[playerid][dMinlog],admData[playerid][dAdmlive],datadep);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
 				if(fadm >= 2)
 				{
@@ -8094,13 +7965,20 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					format(ssss,sizeof(ssss)," Суточный денежный лимит: [%d] Остаток денежного лимита: [%d]", twenlim,restlim);
 					SendClientMessage(playerid, COLOR_GRAD1, ssss);
 				}
-				format(ssss,sizeof(ssss)," ID банды: [%d] Уровень в банде: [%d]", dopdata2,data2[15]);
+				format(ssss,sizeof(ssss)," ID банды: [%d] Уровень в банде: [%d]", datagang,admData[playerid][dGangLvl]);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
+#if (MOD4DINS >= 1)
+				if(admData[playerid][dPassLock] == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Внимание !!! Аккаунт заблокирован системой паспортов,");
+					SendClientMessage(playerid, COLOR_RED, " БЕЗ возможности восстановления !!!");
+				}
+#endif
 				SendClientMessage(playerid, COLOR_LIGHTBLUE, "---------------------------------------------------------------");
 
 				new string222[256];
 				new ip333[128];
-				ip333 = ConvIP(adrip);
+				ip333 = ConvIP(admData[playerid][dIPAdr]);
 				format(string222,sizeof(string222),"banlist/players/%s.ini",akk);
 				if(fexist(string222))
 				{
@@ -8116,7 +7994,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 			{
-   				if(IsPlayerConnected(i))
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 		    	{
 					if(strcmp(akk, RealName[i], false) == 0)
 					{
@@ -8128,20 +8006,21 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			if(level == 99)
 			{
-				if(strcmp(igkey, entpass, false) == 0)
+				if(strcmp(admData[playerid][dKey], entpass, false) == 0)
 				{
 					SendClientMessage(playerid, COLOR_RED, " Аккаунт игрока остался без изменений !");
 					return 1;
 				}
-				printf(" *** Админ %s сменил пароль аккаунту игрока [%s] на (%s) FP: (%s) .", RealName[playerid], akk, entpass, igkey);
-				format(ssss, sizeof(ssss), " Вы сменили пароль аккаунту игрока [%s] на (%s) FP: (%s) .", akk, entpass, igkey);
+				printf(" *** Админ %s сменил пароль аккаунту игрока [%s] на (%s) FP: (%s) .", RealName[playerid], akk, entpass, admData[playerid][dKey]);
+				format(ssss, sizeof(ssss), " Вы сменили пароль аккаунту игрока [%s] на (%s) FP: (%s) .", akk, entpass, admData[playerid][dKey]);
 				SendClientMessage(playerid, COLOR_LIGHTBLUE, ssss);
-				strdel(igkey, 0, 256);
-				strcat(igkey, entpass);
+				strdel(admData[playerid][dKey], 0, 32);
+				strmid(admData[playerid][dKey], entpass, 0, strlen(entpass), 32);
 			}
 			else
 			{
-				if(level == fadm && (vipur1 == 0 || vipur2 == data2[12]) && (scrit1 == 0 || scrit2 == data2[2]) && (summ1 == 0 || summ2 == data2[9]))
+				if(level == fadm && (vipur1 == 0 || vipur2 == admData[playerid][dVIP]) && (scrit1 == 0 ||
+				scrit2 == admData[playerid][dAdmshad]) && (summ1 == 0 || summ2 == admData[playerid][dMoney]))
 				{
 	 				SendClientMessage(playerid, COLOR_RED, " Аккаунт игрока остался без изменений !");
 					return 1;
@@ -8150,13 +8029,25 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				{
 					dopper = 1;
 					AdmUpdate(akk, level, 3);
-					data2[2] = 0;//убрать скрытость
-					data2[3] = 0;//убрать бессмертие
-					data2[12] = 0;//убрать VIP
-					data2[1] = level;//изменение уровня админки
+					admData[playerid][dAdmshad] = 0;//убрать скрытость
+					admData[playerid][dAdmlive] = 0;//убрать бессмертие
+					admData[playerid][dVIP] = 0;//убрать VIP
+					admData[playerid][dAdmin] = level;//изменение уровня админки
 					format(ssss, sizeof(ssss), " *** Админ %s снял админку с аккаунта игрока [%s] .", RealName[playerid], akk);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+					if(oldlevel >= 3)
+					{
+						for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+						{
+							if(strcmp(akk, scrnetper[i], false) == 0)//если ник админа найден, то:
+							{
+								strdel(scrnetper[i], 0, 64);//очистка слота
+								strcat(scrnetper[i], "*** INV_PL_ID");
+								ScrNetPerSave(i);//запись изменённого слота в per-файл
+							}
+						}
+					}
 					new twenlim, restlim;
 					Fmadmins(0, akk, 0, twenlim, restlim);
 				}
@@ -8165,19 +8056,31 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					dopper = 1;
 					AdmUpdate(akk, level, 3);
 					oldlevel = fadm;//сохранение старого уровня админки
-					data2[2] = 0;//убрать скрытость
-					data2[12] = 0;//убрать VIP
-					if(data2[1] <= 0)//изменение уровня админки
+					admData[playerid][dAdmshad] = 0;//убрать скрытость
+					admData[playerid][dVIP] = 0;//убрать VIP
+					if(admData[playerid][dAdmin] <= 0)//изменение уровня админки
 					{
-						data2[1] = level * -1;
+						admData[playerid][dAdmin] = level * -1;
 					}
 					else
 					{
-						data2[1] = level;
+						admData[playerid][dAdmin] = level;
 					}
 					format(ssss, sizeof(ssss), " *** Админ %s дал аккаунту игрока [%s] админку %d уровня.", RealName[playerid], akk, level);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+					if(level <= 2 && oldlevel >= 3)
+					{
+						for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+						{
+							if(strcmp(akk, scrnetper[i], false) == 0)//если ник админа найден, то:
+							{
+								strdel(scrnetper[i], 0, 64);//очистка слота
+								strcat(scrnetper[i], "*** INV_PL_ID");
+								ScrNetPerSave(i);//запись изменённого слота в per-файл
+							}
+						}
+					}
 					if(level <= 1 && oldlevel >= 2)
 					{
 						new twenlim, restlim;
@@ -8191,63 +8094,63 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					}
 					if(level <= 2 && oldlevel >= 3)
 					{
-						data2[3] = 0;//выключить бессмертие
+						admData[playerid][dAdmlive] = 0;//выключить бессмертие
 					}
 					if(level >= 3 && oldlevel <= 2)
 					{
-						data2[3] = 1;//включить бессмертие
+						admData[playerid][dAdmlive] = 1;//включить бессмертие
 					}
 				}
-				if(vipur1 == 1 && vipur2 == 0 && vipur2 != data2[12] && level == 0)
+				if(vipur1 == 1 && vipur2 == 0 && vipur2 != admData[playerid][dVIP] && level == 0)
 				{
 					dopper = 1;
-					data2[12] = vipur2;//изменение VIP
+					admData[playerid][dVIP] = vipur2;//изменение VIP
 					format(ssss, sizeof(ssss), " *** Админ %s снял с аккаунта игрока [%s] VIP уровень.", RealName[playerid], akk);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				}
-				if(vipur1 == 1 && vipur2 == 0 && vipur2 != data2[12] && level != 0)
+				if(vipur1 == 1 && vipur2 == 0 && vipur2 != admData[playerid][dVIP] && level != 0)
 				{
 					dopper = 1;
-					data2[12] = vipur2;//изменение VIP
+					admData[playerid][dVIP] = vipur2;//изменение VIP
 					format(ssss, sizeof(ssss), " *** Админ %s запретил аккаунту игрока [%s] прием PM.", RealName[playerid], akk);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				}
-				if(vipur1 == 1 && (vipur2 > 0 && vipur2 <= 2) && vipur2 != data2[12] && level == 0)
+				if(vipur1 == 1 && (vipur2 > 0 && vipur2 <= 2) && vipur2 != admData[playerid][dVIP] && level == 0)
 				{
 					dopper = 1;
-					data2[12] = vipur2;//изменение VIP
-					format(ssss, sizeof(ssss), " *** Админ %s дал аккаунту игрока [%s] VIP %d уровня.", RealName[playerid], akk, data2[12]);
+					admData[playerid][dVIP] = vipur2;//изменение VIP
+					format(ssss, sizeof(ssss), " *** Админ %s дал аккаунту игрока [%s] VIP %d уровня.", RealName[playerid], akk, admData[playerid][dVIP]);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				}
-				if(vipur1 == 1 && vipur2 == 3 && vipur2 != data2[12])
+				if(vipur1 == 1 && vipur2 == 3 && vipur2 != admData[playerid][dVIP])
 				{
 					dopper = 1;
-					data2[1] = 0;//убрать админ LVL
-					data2[2] = 0;//убрать скрытость
-					data2[3] = 0;//убрать бессмертие
-					data2[9] = 1000;//установка личного счёта
-					data2[12] = vipur2;//изменение VIP
+					admData[playerid][dAdmin] = 0;//убрать админ LVL
+					admData[playerid][dAdmshad] = 0;//убрать скрытость
+					admData[playerid][dAdmlive] = 0;//убрать бессмертие
+					admData[playerid][dMoney] = 1000;//установка личного счёта
+					admData[playerid][dVIP] = vipur2;//изменение VIP
 					format(ssss, sizeof(ssss), " *** Админ %s дал аккаунту игрока [%s] статус депортации.", RealName[playerid], akk);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				}
-				if(vipur1 == 1 && vipur2 == 4 && vipur2 != data2[12] && level != 0 &&
-				(data2[2] == 0 || (scrit1 == 1 && scrit2 == 0)))
+				if(vipur1 == 1 && vipur2 == 4 && vipur2 != admData[playerid][dVIP] && level != 0 &&
+				(admData[playerid][dAdmshad] == 0 || (scrit1 == 1 && scrit2 == 0)))
 				{
 					dopper = 1;
-					data2[12] = vipur2;//изменение VIP
+					admData[playerid][dVIP] = vipur2;//изменение VIP
 					format(ssss, sizeof(ssss), " *** Админ %s разрешил аккаунту игрока [%s] прием PM.", RealName[playerid], akk);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				}
-				if(scrit1 == 1 && scrit2 != data2[2] && level != 0)
+				if(scrit1 == 1 && scrit2 != admData[playerid][dAdmshad] && level != 0)
 				{
 					dopper = 1;
-					data2[2] = scrit2;//установить скрытость
-					if(data2[2] == 0)
+					admData[playerid][dAdmshad] = scrit2;//установить скрытость
+					if(admData[playerid][dAdmshad] == 0)
 					{
 						format(ssss, sizeof(ssss), " *** Админ %s убрал с аккаунта игрока [%s] статус скрытости.", RealName[playerid], akk);
 						print(ssss);
@@ -8255,19 +8158,19 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					}
 					else
 					{
-                    	data2[12] = 0;//изменение VIP (убрать действие функции /openpm)
+                    	admData[playerid][dVIP] = 0;//изменение VIP (убрать действие функции /openpm)
 						format(ssss, sizeof(ssss), " *** Админ %s дал аккаунту игрока [%s] статус скрытости.", RealName[playerid], akk);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 					}
 				}
-				if(summ1 == 1 && summ2 != data2[9] && data2[12] != 3)
+				if(summ1 == 1 && summ2 != admData[playerid][dMoney] && admData[playerid][dVIP] != 3)
 				{
 					new dopper44;
-					dopper44 = data2[9];
+					dopper44 = admData[playerid][dMoney];
 					dopper = 1;
-					data2[9] = summ2;//изменение личного счёта
-					format(ssss, sizeof(ssss), " *** Личный счёт аккаунта игрока [%s] был изменён на: %d $ .", akk, data2[9]);
+					admData[playerid][dMoney] = summ2;//изменение личного счёта
+					format(ssss, sizeof(ssss), " *** Личный счёт аккаунта игрока [%s] был изменён на: %d $ .", akk, admData[playerid][dMoney]);
 					print(ssss);
 					SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 					printf("[moneysys] Предыдущая сумма аккаунта игрока %s : %d $", akk, dopper44);
@@ -8279,81 +8182,15 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				}
 			}
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			format(strdln, sizeof(strdln), "UPDATE Players SET Key = '%s',TDReg = '%s',",igkey,tdreg);//создаём запрос БД
-			format(strdln, sizeof(strdln), "%sDEndConD = %d,DEndConM = %d,DEndConY = %d,", strdln, dddata2[0],dddata2[1],dddata2[2]);
-			format(strdln, sizeof(strdln), "%sIPAdr = '%s',MinLog = %d,", strdln, adrip,data2[0]);
-			format(strdln, sizeof(strdln), "%sAdminLevel = %d,AdminShadow = %d,", strdln, data2[1],data2[2]);
-			format(strdln, sizeof(strdln), "%sAdminLive = %d,", strdln, data2[3]);
-			format(strdln, sizeof(strdln), "%sPrison = %d,Prisonsec = %d,", strdln, data2[5],data2[6]);
-			format(strdln, sizeof(strdln), "%sMuted = %d,Mutedsec = %d,", strdln, data2[7],data2[8]);
-			format(strdln, sizeof(strdln), "%sMoney = %d,Kills = %d,", strdln, data2[9],data2[10]);
-			format(strdln, sizeof(strdln), "%sDeaths = %d,VIP = %d,", strdln, data2[11],data2[12]);
-			format(strdln, sizeof(strdln), "%sLock = %d,Gang = %d,GangLvl = %d ", strdln, data2[13],data2[14],data2[15]);
-			format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
+			format(strdln, sizeof(strdln), "UPDATE Players SET Key = '%s',",admData[playerid][dKey]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sAdminLevel = %d,AdminShadow = %d,", strdln, admData[playerid][dAdmin],admData[playerid][dAdmshad]);
+			format(strdln, sizeof(strdln), "%sAdminLive = %d,Money = %d,", strdln, admData[playerid][dAdmlive], admData[playerid][dMoney]);
+			format(strdln, sizeof(strdln), "%sVIP = %d WHERE (Name = '%s')", strdln, admData[playerid][dVIP], akk);
 			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
 		}
@@ -9345,17 +9182,18 @@ public OnPlayerCommandText(playerid, cmdtext[])
 #if (MOD90INS == 0)
 				format(strdln,sizeof(strdln),"В первом ключе указан уровень админа, во втором ключе\
 				\nуказано как админ получил админку:\n   1 - с помошью команд   /iadminset   или   /untouch\
-				\n   2 - с помощью команды   /makeadmin  \n   3 - с помощью команды   /admakk\
-				\n   4 - с помощью обычного логирования\n        (аккаунт админа был перенесён на данный сервер)\
-				\n   5 - после дисконнекта (админ очистил\n        свой слот регистрации, но остался админом)\n");
+				\n   2 - с помощью команды   /makeadmin\n   3 - с помощью команды   /admakk\
+				\n   4 - с помощью обычного логирования\n        (аккаунт админа был перенесён на данный сервер)");
 #endif
 #if (MOD90INS == 1)
 				format(strdln,sizeof(strdln),"В первом ключе указан уровень админа, во втором ключе\
 				\nуказано как админ получил админку:\n   1 - с помошью команд   /iadminset   или   /untouch\
-				\n   2 - с помощью команды   /makeadmin  \n   3 - с помощью команды   /admakk\
-				\n   4 - с помощью обычного логирования\n        (аккаунт админа был изменён в базе данных сервера)\
-				\n   5 - после дисконнекта (админ очистил\n        свой слот регистрации, но остался админом)\n");
+				\n   2 - с помощью команды   /makeadmin\n   3 - с помощью команды   /admakk\
+				\n   4 - с помощью обычного логирования\n        (аккаунт админа был изменён в базе данных сервера)");
 #endif
+				format(strdln,sizeof(strdln),"%s\n   5 - после дисконнекта (админ очистил\
+				\n        свой слот регистрации, но остался админом)\
+				\n   6 - с помощью импортирования данных\n   7 - после удаления аккаунта админа командой   /delakk\n",strdln);
 				format(strdln,sizeof(strdln),"%s\nСлот  0: %s\nСлот  1: %s\nСлот  2: %s\nСлот  3: %s\nСлот  4: %s\nСлот  5: %s\
 				\nСлот  6: %s\nСлот  7: %s\nСлот  8: %s\nСлот  9: %s\nСлот 10: %s\nСлот 11: %s\nСлот 12: %s\nСлот 13: %s\
 				\nСлот 14: %s\nСлот 15: %s\nСлот 16: %s\nСлот 17: %s\nСлот 18: %s\nСлот 19: %s",strdln,
@@ -9637,6 +9475,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			SendClientMessage(playerid, COLOR_RED, " В данном месте сохранение позиции невозможно !");
 			return 1;
 		}
+		TpPosP[playerid] = vw;
 		GetPlayerPos(playerid, TpDestP[playerid][0],TpDestP[playerid][1],TpDestP[playerid][2]);
 		if (GetPlayerState(playerid) == 2 || GetPlayerState(playerid) == 3)
 		{
@@ -9659,7 +9498,8 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		PlayCRTP[playerid] = 1;//блокировка контроля координат
 		if (GetPlayerState(playerid) == 2)
 		{
-			new regm = 2, per1 = 0, per2 = 0, Float:per3;
+			new regm = 2, per1 = 0, per2, Float:per3;
+			per2 = TpPosP[playerid];
 			per3 = TpDestP[playerid][3];
 			StopDrift(playerid,regm,per1,per2,Float:per3,Float:TpDestP[playerid][0],Float:TpDestP[playerid][1],Float:TpDestP[playerid][2]+1);
 		}
@@ -9667,7 +9507,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		{
 			tpdrift[playerid] = 1;
 			SetPlayerInterior(playerid, 0);
-			SetPlayerVirtualWorld(playerid, 0);
+			SetPlayerVirtualWorld(playerid, TpPosP[playerid]);
 			SetPlayerPos(playerid, TpDestP[playerid][0],TpDestP[playerid][1],TpDestP[playerid][2]+1);
 			SetPlayerFacingAngle(playerid, TpDestP[playerid][3]);
 			SetCameraBehindPlayer(playerid);
@@ -9903,6 +9743,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			tmp = strtok(cmdtext, idx);
 			if(para1 == 0)
 			{
+				if(InpNameControl(tmp) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+					SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+					return 1;
+				}
 				if(strlen(tmp) < 1 || strlen(tmp) > 25)
 				{
 					SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
@@ -10396,7 +10242,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 1)
     	{
-   			new data2[53],dopper,csec;
+   			new dopper,csec;
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
@@ -10404,9 +10250,64 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_GRAD2, " (чтобы разоткнуть, введите 3 секунды)] [причина]");
 				return 1;
 			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+				return 1;
+			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
 			{
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
+				return 1;
+			}
+			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
+			{
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
+		    	{
+					if(strcmp(akk, RealName[i], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
+						SendClientMessage(playerid, COLOR_RED, ssss);
+						return 1;
+					}
+				}
+			}
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+			{
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
+				return 1;
+			}
+#if (MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+				return 1;
+			}
+#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
+			}
+			else
+			{
+				fadm = admData[playerid][dAdmin];
+			}
+			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
+			{
+				if(fadm == 5)//подмена 5-го левела на 4-й
+				{
+					dopper = 4;
+				}
+				else
+				{
+					dopper = fadm;
+				}
+				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
+				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
 			tmp = strtok(cmdtext, idx);
@@ -10429,249 +10330,21 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				idx++;
 			}
 			result[idx - offset] = EOS;
-#if (MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
-			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-#endif
-#if (MOD90INS == 1)
-			new mgrakk = 0;
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				mgrakk = 1;
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 15, buffer, 32); data2[7] = strval(buffer);//Muted
-					db_get_field(querydb[playerid], 16, buffer, 32); data2[8] = strval(buffer);//Mutedsec
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
-			{
-   				if(IsPlayerConnected(i))
-		    	{
-					if(strcmp(akk, RealName[i], false) == 0)
-					{
-						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
-						SendClientMessage(playerid, COLOR_RED, ssss);
-						return 1;
-					}
-				}
-			}
-			new fadm;
-			if(data2[1] < 0)
-			{
-				fadm = data2[1] * -1;
-			}
-			else
-			{
-				fadm = data2[1];
-			}
-			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
-			{
-				if(fadm == 5)//подмена 5-го левела на 4-й
-				{
-					dopper = 4;
-				}
-				else
-				{
-					dopper = fadm;
-				}
-				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
-				SendClientMessage(playerid, COLOR_RED, ssss);
-				return 1;
-			}
 			if(csec != 3)//заткнуть игрока
 			{
 				if(csec < 5) {csec = 5;}
-				if(data2[8] == 0)//если игрок НЕ заткнут, то:
+				if(admData[playerid][dMutedsec] == 0)//если игрок НЕ заткнут, то:
 				{
-					data2[7]++;
+					admData[playerid][dMuted]++;
 				}
-				data2[8] = csec;
+				admData[playerid][dMutedsec] = csec;
 			}
 			else//разоткнуть игрока
 			{
-				if(data2[8] > 0)//если игрок заткнут, то:
+				if(admData[playerid][dMutedsec] > 0)//если игрок заткнут, то:
 				{
-  					data2[7]--;
-					data2[8] = 0;
+  					admData[playerid][dMuted]--;
+					admData[playerid][dMutedsec] = 0;
 				}
 				else
 				{
@@ -10679,158 +10352,15 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					return 1;
 				}
 			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string999[256];
-			format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-			if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-//---------------------------------- конец -------------------------------------
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(gngakkrd == 1)
-			{
-				fremove(string999);
-			}
-//---------------------------------- конец -------------------------------------
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			if(mgrakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-			{
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string999);
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт был зарегистрирован в SQLite)
-			{
-				if(gngakkrd == 1)//если был найден аккаунт банды, то:
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Muted = %d,Mutedsec = %d,",data2[7],data2[8]);//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d WHERE (Name = '%s')", strdln, data2[14],data2[15],akk);
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-					if(gngakkrd == 1)
-					{
-						fremove(string999);
-					}
-				}
-				else//иначе: (если НЕ был найден аккаунт банды)
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Muted = %d,Mutedsec = %d WHERE (Name = '%s')",data2[7],data2[8],akk);//создаём запрос БД
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-				}
-			}
+			format(strdln, sizeof(strdln), "UPDATE Players SET Muted = %d,", admData[playerid][dMuted]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sMutedsec = %d WHERE (Name = '%s')", strdln, admData[playerid][dMutedsec], akk);
+			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
 			if(csec != 3)//заткнуть игрока
 			{
@@ -10862,7 +10392,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 1)
     	{
-   			new data2[53],dopper,csec;
+   			new dopper,csec;
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
@@ -10870,9 +10400,64 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_GRAD2, " (чтобы освободить, введите 3 секунды)] [причина]");
 				return 1;
 			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+				return 1;
+			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
 			{
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
+				return 1;
+			}
+			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
+			{
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
+		    	{
+					if(strcmp(akk, RealName[i], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
+						SendClientMessage(playerid, COLOR_RED, ssss);
+						return 1;
+					}
+				}
+			}
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+			{
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
+				return 1;
+			}
+#if (MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+				return 1;
+			}
+#endif
+			new fadm;
+			if(admData[playerid][dAdmin] < 0)
+			{
+				fadm = admData[playerid][dAdmin] * -1;
+			}
+			else
+			{
+				fadm = admData[playerid][dAdmin];
+			}
+			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
+			{
+				if(fadm == 5)//подмена 5-го левела на 4-й
+				{
+					dopper = 4;
+				}
+				else
+				{
+					dopper = fadm;
+				}
+				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
+				SendClientMessage(playerid, COLOR_RED, ssss);
 				return 1;
 			}
 			tmp = strtok(cmdtext, idx);
@@ -10895,249 +10480,21 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				idx++;
 			}
 			result[idx - offset] = EOS;
-#if (MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
-			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-				return 1;
-			}
-#endif
-#if (MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-#endif
-#if (MOD90INS == 1)
-			new mgrakk = 0;
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				mgrakk = 1;
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 13, buffer, 32); data2[5] = strval(buffer);//Prison
-					db_get_field(querydb[playerid], 14, buffer, 32); data2[6] = strval(buffer);//Prisonsec
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
-			{
-   				if(IsPlayerConnected(i))
-		    	{
-					if(strcmp(akk, RealName[i], false) == 0)
-					{
-						format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] On-Line !", akk);
-						SendClientMessage(playerid, COLOR_RED, ssss);
-						return 1;
-					}
-				}
-			}
-			new fadm;
-			if(data2[1] < 0)
-			{
-				fadm = data2[1] * -1;
-			}
-			else
-			{
-				fadm = data2[1];
-			}
-			if(fadm >= 1 && (PlayerInfo[playerid][pAdmin] >= 1 && PlayerInfo[playerid][pAdmin] <= 3))//проверка аккаунта на админку
-			{
-				if(fadm == 5)//подмена 5-го левела на 4-й
-				{
-					dopper = 4;
-				}
-				else
-				{
-					dopper = fadm;
-				}
-				format(ssss,sizeof(ssss)," Нельзя, аккаунт игрока [%s] - админ %d LVL !", akk, dopper);
-				SendClientMessage(playerid, COLOR_RED, ssss);
-				return 1;
-			}
 			if(csec != 3)//посадить игрока
 			{
 				if(csec < 5) {csec = 5;}
-				if(data2[6] == 0)//если не в тюрьме, то:
+				if(admData[playerid][dPrisonsec] == 0)//если не в тюрьме, то:
 				{
-					data2[5]++;
+					admData[playerid][dPrison]++;
 				}
-				data2[6] = csec;
+				admData[playerid][dPrisonsec] = csec;
 			}
 			else//освободить игрока
 			{
-				if(data2[6] > 0)//если игрок в тюрьме, то:
+				if(admData[playerid][dPrisonsec] > 0)//если игрок в тюрьме, то:
 				{
-  					data2[5]--;
-					data2[6] = 0;
+  					admData[playerid][dPrison]--;
+					admData[playerid][dPrisonsec] = 0;
 				}
 				else
 				{
@@ -11145,158 +10502,15 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					return 1;
 				}
 			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string999[256];
-			format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-			if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-//---------------------------------- конец -------------------------------------
 #if (MOD90INS == 0)
-			new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-			if (hFile)
-			{
-				new var[32];
-				format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-				format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-				format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-				format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-				format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-				format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-				format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-				format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-				format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-				format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-				format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-				format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-				format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-				format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-				format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-				format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-				format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-				format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-				format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//				format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//				format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//				format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//				format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//				format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//				format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//				format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//				format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//				format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//				format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-				format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-				format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-				fclose(hFile);
-			}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			if(gngakkrd == 1)
-			{
-				fremove(string999);
-			}
-//---------------------------------- конец -------------------------------------
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-			if(mgrakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-			{
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string999);
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт был зарегистрирован в SQLite)
-			{
-				if(gngakkrd == 1)//если был найден аккаунт банды, то:
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Prison = %d,Prisonsec = %d,",data2[5],data2[6]);//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d WHERE (Name = '%s')", strdln, data2[14],data2[15],akk);
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-					if(gngakkrd == 1)
-					{
-						fremove(string999);
-					}
-				}
-				else//иначе: (если НЕ был найден аккаунт банды)
-				{
-					format(strdln, sizeof(strdln), "UPDATE Players SET Prison = %d,Prisonsec = %d WHERE (Name = '%s')",data2[5],data2[6],akk);//создаём запрос БД
-					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-				}
-			}
+			format(strdln, sizeof(strdln), "UPDATE Players SET Prison = %d,", admData[playerid][dPrison]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sPrisonsec = %d WHERE (Name = '%s')", strdln, admData[playerid][dPrisonsec], akk);
+			db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
 			if(csec != 3)//посадить игрока
 			{
@@ -11969,7 +11183,6 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 4)
     	{
-   			new data2[53];
 			tmp = strtok(cmdtext, idx);
     		if(!strlen(tmp))
 			{
@@ -12008,6 +11221,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			if(para1 == 1)
 			{
+				if(InpNameControl(akk) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+					SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+					return 1;
+				}
 				if(strlen(akk) < 1 || strlen(akk) > 25)
 				{
 					SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
@@ -12285,360 +11504,68 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			if(para1 == 1)
 			{
-#if (MOD90INS == 0)
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
+				strdel(dAccName[playerid], 0, 64);
+				strcat(dAccName[playerid], akk);
+				if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				new gngakkrd = 0;
-				new string999[256];
-				format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-				if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-				{
-					gngakkrd = 1;
-					new string333[256];
-					format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-					new File: UserFile333 = fopen(string333, io_read);//чтение файла
-					new key333[ 256 ] , val333[ 256 ];
-					new Data333[ 256 ];
-					while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-					{
-						key333 = ini_GetKey( Data333 );
-						if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-						if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-					}
-					fclose(UserFile333);
+					SendClientMessage(playerid, COLOR_RED, " Ошибка чтения аккаунта игрока !");
+					return 1;
 				}
-				if(gngakkrd == 1)
+#if (MOD4DINS >= 1)
+				if(admData[playerid][dPassLock] == 1)
 				{
-					new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-					if (hFile)
-					{
-						new var[32];
-						format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-						format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-						format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-						format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-						format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-						format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-						format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-						format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-						format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-						format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-						format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-						format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-						format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-						format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-						format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-						format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-						format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-						format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-						format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//						format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//						format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//						format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//						format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//						format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//						format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//						format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//						format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//						format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-						fclose(hFile);
-					}
-					fremove(string999);
-				}
-//---------------------------------- конец -------------------------------------
-#endif
-#if (MOD90INS == 1)
-				if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-				{
-					new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    	new key[ 256 ] , val[ 256 ];
-			    	new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
-					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    		if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    		if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    		if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        	if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        	if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        	if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        	if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        	if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        	if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        	if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        	if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        	if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        	if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        	if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        	if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        	if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        	if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        	if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        	if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        	if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        	if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        	if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        	if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        	if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-						if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                	}
-                	fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new gngakkrd = 0;
-					new string999[256];
-					format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-					if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-					{
-						gngakkrd = 1;
-						new string333[256];
-						format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-						new File: UserFile333 = fopen(string333, io_read);//чтение файла
-						new key333[ 256 ] , val333[ 256 ];
-						new Data333[ 256 ];
-						while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-						{
-							key333 = ini_GetKey( Data333 );
-							if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-							if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-						}
-						fclose(UserFile333);
-					}
-//---------------------------------- конец -------------------------------------
-
-					format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-					db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-					format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-					format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-					format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-					format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-					format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-					format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-					format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-					format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-					db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					if(gngakkrd == 1)
-					{
-						fremove(string999);//удаляем аккаунт из системы банд
-					}
-//---------------------------------- конец -------------------------------------
-					if(fexist(string))
-					{
-						fremove(string);//удаляем аккаунт из fopen
-					}
-				}
-				else//иначе: (если аккаунт зарегистрирован в SQLite)
-				{
-					format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-					querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-					if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-					{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-						db_free_result(querydb[playerid]);//очищаем результат запроса БД
-						SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-						return 1;
-					}
-					else//иначе: (если аккаунт зарегистрирован в БД)
-					{
-						new buffer[32];//читаем данные из БД
-						db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-						db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-						db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					}
+					SendClientMessage(playerid, COLOR_RED, " Аккаунт заблокирован системой паспортов !");
+					return 1;
 				}
 #endif
-				if(data2[14] == para3 && data2[15] == para4)
+				if(admData[playerid][dGang] == para3 && admData[playerid][dGangLvl] == para4)
 				{
 					SendClientMessage(playerid,COLOR_RED," У выбранного игрока уже установлены назначаемые данные !");
 					return 1;
 				}
 				if(para3 == -600)
 				{
-					if(data2[14] == 0)
+					if(admData[playerid][dGang] == 0)
 					{
 						format(ssss, sizeof(ssss), " *** Админ %s запретил приглашать аккаунт игрока %s в банду (/edplgangs) .", RealName[playerid], akk);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 					}
-					if(data2[14] > 0)
+					if(admData[playerid][dGang] > 0)
 					{
-						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, data2[14]);
+						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, admData[playerid][dGang]);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " *** и запретил приглашать аккаунт игрока %s в банду (/edplgangs) .", akk);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
-						GPlayers[data2[14]]--;//делаем в банде -1 игрок
-						GangSave(data2[14]);//записываем банду
+						GPlayers[admData[playerid][dGang]]--;//делаем в банде -1 игрок
+						GangSave(admData[playerid][dGang]);//записываем банду
 					}
 				}
 				if(para3 == 0)
 				{
-					if(data2[14] == -600)
+					if(admData[playerid][dGang] == -600)
 					{
 						format(ssss, sizeof(ssss), " *** Админ %s разрешил приглашать аккаунт игрока %s в банду (/edplgangs) .", RealName[playerid], akk);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 					}
-					if(data2[14] > 0)
+					if(admData[playerid][dGang] > 0)
 					{
-						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, data2[14]);
+						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, admData[playerid][dGang]);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " *** и разрешил приглашать аккаунт игрока %s в банду (/edplgangs) .", akk);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
-						GPlayers[data2[14]]--;//делаем в банде -1 игрок
-						GangSave(data2[14]);//записываем банду
+						GPlayers[admData[playerid][dGang]]--;//делаем в банде -1 игрок
+						GangSave(admData[playerid][dGang]);//записываем банду
 					}
 				}
 				if(para3 > 0)
 				{
-					if(data2[14] == -600 || data2[14] == 0)
+					if(admData[playerid][dGang] == -600 || admData[playerid][dGang] == 0)
 					{
 						format(ssss, sizeof(ssss), " *** Админ %s приписал аккаунт игрока %s к банде (ид: %d) ,", RealName[playerid], akk, para3);
 						print(ssss);
@@ -12654,7 +11581,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 						GPlayers[para3]++;//делаем в банде +1 игрок
 						GangSave(para3);//записываем банду
 					}
-					if(data2[14] == para3)
+					if(admData[playerid][dGang] == para3)
 					{
 						format(ssss, sizeof(ssss), " *** Админ %s назначил аккаунту игрока %s уровень %d в его банде (/edplgangs) .", RealName[playerid], akk, para4);
 						print(ssss);
@@ -12666,9 +11593,9 @@ public OnPlayerCommandText(playerid, cmdtext[])
 						}
 						GangSave(para3);//записываем банду
 					}
-					if(data2[14] != para3 && data2[14] != -600 && data2[14] != 0)
+					if(admData[playerid][dGang] != para3 && admData[playerid][dGang] != -600 && admData[playerid][dGang] != 0)
 					{
-						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, data2[14]);
+						format(ssss, sizeof(ssss), " *** Админ %s удалил аккаунт игрока %s из банды (ид: %d) ,", RealName[playerid], akk, admData[playerid][dGang]);
 						print(ssss);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " *** приписал аккаунт игрока %s к банде (ид: %d) ,", akk, para3);
@@ -12682,81 +11609,22 @@ public OnPlayerCommandText(playerid, cmdtext[])
 							strdel(GHead[para3], 0, 64);//удалить имя старого лидера банды
 							strcat(GHead[para3], akk);//назначить имя нового лидера банды
 						}
-						GPlayers[data2[14]]--;//делаем в банде -1 игрок
-						GangSave(data2[14]);//записываем банду
+						GPlayers[admData[playerid][dGang]]--;//делаем в банде -1 игрок
+						GangSave(admData[playerid][dGang]);//записываем банду
 						GPlayers[para3]++;//делаем в банде +1 игрок
 						GangSave(para3);//записываем банду
 					}
 				}
-				data2[14] = para3;
-				data2[15] = para4;
+				admData[playerid][dGang] = para3;
+				admData[playerid][dGangLvl] = para4;
 #if (MOD90INS == 0)
-				new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-				if (hFile)
-				{
-					new var[32];
-					format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-					format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-					format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-					format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-					format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-					format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-					format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-					format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-					format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-					format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-					format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-					format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-					format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-					format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-					format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-					format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-					format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-					format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-					format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//					format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//					format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//					format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//					format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//					format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//					format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//					format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//					format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//					format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-					fclose(hFile);
-				}
+				strdel(dAccName[playerid], 0, 64);
+				strcat(dAccName[playerid], akk);
+				AccDataSaveFo(playerid);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-				format(strdln, sizeof(strdln), "UPDATE Players SET Gang = %d,GangLvl = %d ",data2[14],data2[15]);//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
+				format(strdln, sizeof(strdln), "UPDATE Players SET Gang = %d,", admData[playerid][dGang]);//создаём запрос БД
+				format(strdln, sizeof(strdln), "%sGangLvl = %d WHERE (Name = '%s')", strdln, admData[playerid][dGangLvl], akk);
 				db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
 			}
@@ -13017,16 +11885,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 3)
     	{
-   			new data2[54],dopper;
-#endif
-#if (MOD77INS == 1 && MOD90INS == 1)
-   			new dddata2[3];
-#endif
-#if (MOD77INS == 1)
+   			new dopper;
 			akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /dataakk [имя аккаунта]");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -13034,371 +11903,21 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
 				return 1;
 			}
-#endif
-#if (MOD77INS == 1 && MOD90INS == 0)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))
+			strdel(dAccName[playerid], 0, 64);
+			strcat(dAccName[playerid], akk);
+			if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 			{
-				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
+				SendClientMessage(playerid, COLOR_RED, " Такого аккаунта не существует !");
 				return 1;
 			}
-#endif
-#if (MOD77INS == 1 && MOD90INS == 1)
-			format(string,sizeof(string),"players/%s.ini",akk);
-//        	format(string,sizeof(string),"%s.ini",akk);
-			if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-			{//проверим регистрацию в SQLite
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
-					return 1;
-				}
-				else
-				{
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD77INS == 1 && MOD90INS == 0)
-			new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			new key[ 256 ] , val[ 256 ];
-			new Data[ 256 ];
-			while ( fread( UserFile , Data , sizeof( Data ) ) )
-			{
-				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-			}
-			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			new gngakkrd = 0;
-			new string999[256];
-			format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-			if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-			{
-				gngakkrd = 1;
-				new string333[256];
-				format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-				new File: UserFile333 = fopen(string333, io_read);//чтение файла
-				new key333[ 256 ] , val333[ 256 ];
-				new Data333[ 256 ];
-				while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-				{
-					key333 = ini_GetKey( Data333 );
-					if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-					if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-				}
-				fclose(UserFile333);
-			}
-			if(gngakkrd == 1)
-			{
-				new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-				if (hFile)
-				{
-					new var[32];
-					format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-					format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-					format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-					format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-					format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-					format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-					format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-					format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-					format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-					format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-					format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-					format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-					format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-					format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-					format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-					format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-					format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-					format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-					format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//					format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//					format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//					format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//					format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//					format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//					format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//					format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//					format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//					format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//					format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-					format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-					format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-					fclose(hFile);
-				}
-				fremove(string999);
-			}
-//---------------------------------- конец -------------------------------------
-#endif
-#if (MOD77INS == 1 && MOD90INS == 1)
-			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-			{
-				new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    new key[ 256 ] , val[ 256 ];
-			    new Data[ 256 ];
-				while ( fread( UserFile , Data , sizeof( Data ) ) )
-				{
-					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                }
-                fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				new gngakkrd = 0;
-				new string999[256];
-				format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-				if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-				{
-					gngakkrd = 1;
-					new string333[256];
-					format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-					new File: UserFile333 = fopen(string333, io_read);//чтение файла
-					new key333[ 256 ] , val333[ 256 ];
-					new Data333[ 256 ];
-					while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-					{
-						key333 = ini_GetKey( Data333 );
-						if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-						if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-					}
-					fclose(UserFile333);
-				}
-//---------------------------------- конец -------------------------------------
-
-				format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-				db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-				format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-				format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-				format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-				format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-				format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-				format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-				format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-				format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-				format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-				db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-				dddata2[0] = 0;//обнуляем дату последнего входа на сервер (для мониторинга)
-				dddata2[1] = 0;
-				dddata2[2] = 0;
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-				if(gngakkrd == 1)
-				{
-					fremove(string999);//удаляем аккаунт из системы банд
-				}
-//---------------------------------- конец -------------------------------------
-				if(fexist(string))
-				{
-					fremove(string);//удаляем аккаунт из fopen
-				}
-			}
-			else//иначе: (если аккаунт зарегистрирован в SQLite)
-			{
-				format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-				querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-				if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-				{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-					SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-					return 1;
-				}
-				else//иначе: (если аккаунт зарегистрирован в БД)
-				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 3, tdreg, 256);//TDReg
-					db_get_field(querydb[playerid], 4, buffer, 32); dddata2[0] = strval(buffer);//DEndConD
-					db_get_field(querydb[playerid], 5, buffer, 32); dddata2[1] = strval(buffer);//DEndConM
-					db_get_field(querydb[playerid], 6, buffer, 32); dddata2[2] = strval(buffer);//DEndConY
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 8, buffer, 32); data2[0] = strval(buffer);//MinLog
-					db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-					db_get_field(querydb[playerid], 10, buffer, 32); data2[2] = strval(buffer);//AdminShadow
-					db_get_field(querydb[playerid], 11, buffer, 32); data2[3] = strval(buffer);//AdminLive
-					db_get_field(querydb[playerid], 13, buffer, 32); data2[5] = strval(buffer);//Prison
-					db_get_field(querydb[playerid], 14, buffer, 32); data2[6] = strval(buffer);//Prisonsec
-					db_get_field(querydb[playerid], 15, buffer, 32); data2[7] = strval(buffer);//Muted
-					db_get_field(querydb[playerid], 16, buffer, 32); data2[8] = strval(buffer);//Mutedsec
-					db_get_field(querydb[playerid], 17, buffer, 32); data2[9] = strval(buffer);//Money
-					db_get_field(querydb[playerid], 18, buffer, 32); data2[10] = strval(buffer);//Kills
-					db_get_field(querydb[playerid], 19, buffer, 32); data2[11] = strval(buffer);//Deaths
-					db_get_field(querydb[playerid], 20, buffer, 32); data2[12] = strval(buffer);//VIP
-					db_get_field(querydb[playerid], 21, buffer, 32); data2[13] = strval(buffer);//Lock
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-					db_free_result(querydb[playerid]);//очищаем результат запроса БД
-				}
-			}
-#endif
-#if (MOD77INS == 1)
 			new fadm;
-			if(data2[1] < 0)
+			if(admData[playerid][dAdmin] < 0)
 			{
-				fadm = data2[1] * -1;
+				fadm = admData[playerid][dAdmin] * -1;
 			}
 			else
 			{
-				fadm = data2[1];
+				fadm = admData[playerid][dAdmin];
 			}
 			if(fadm >= 4 && PlayerInfo[playerid][pAdmin] <= 3)//проверка аккаунта на админку 4-го лвл
 			{
@@ -13418,24 +11937,25 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			dopdata44 = 0;
 			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 			{
-	   			if(IsPlayerConnected(i))
+	   			if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 			    {
 					if(strcmp(akk, RealName[i], false) == 0) { dopdata44 = 1; }
 				}
 			}
 			new dopdata2;
-			if(data2[14] == -600)
+			if(admData[playerid][dGang] == -600)
 			{
 				dopdata2 = 0;
 			}
 			else
 			{
-				dopdata2 = data2[14];
+				dopdata2 = admData[playerid][dGang];
 			}
-			data2[53] = 0;//депортация = 0
-			if(data2[12] == 3)//если VIP = 3, то:
+			new datadep;
+			datadep = 0;//депортация = 0
+			if(admData[playerid][dVIP] == 3)//если VIP = 3, то:
 			{
-				data2[53] = 1;//депортация = 1
+				datadep = 1;//депортация = 1
 			}
 			printf(" *** Админ %s [%d] просмотрел аккаунт игрока %s . Без пароля !", RealName[playerid], playerid, akk);
 
@@ -13446,21 +11966,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			{
 				SendClientMessage(playerid, COLOR_LIGHTRED, " Внимание !!! Аккаунт игрока On-Line !");
 			}
-			format(ssss,sizeof(ssss)," Время и дата регистрации: [ %s ]", tdreg);
+			format(ssss,sizeof(ssss)," Время и дата регистрации: [ %s ]", admData[playerid][dTDReg]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
-#endif
-#if (MOD77INS == 1 && MOD90INS == 1)
-			format(ssss,sizeof(ssss)," Дата последнего входа на сервер: [ %02d/%02d/%04d ]", dddata2[0],dddata2[1],dddata2[2]);
+			format(ssss,sizeof(ssss)," Дата последнего входа на сервер: [ %02d/%02d/%04d ]", admData[playerid][dEndConD],admData[playerid][dEndConM],admData[playerid][dEndConY]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
-#endif
-#if (MOD77INS == 1)
-			format(ssss,sizeof(ssss)," IP: [%s] Админ LVL: [%d] Скрытость админа: [%d]", adrip,fadm,data2[2]);
+			format(ssss,sizeof(ssss)," IP: [%s] Админ LVL: [%d] Скрытость админа: [%d]", admData[playerid][dIPAdr],fadm,admData[playerid][dAdmshad]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
-			format(ssss,sizeof(ssss)," Посадок в тюрьму: [%d] Секунд тюрьмы: [%d] Число затыков: [%d] Секунд затыка: [%d]", data2[5],data2[6],data2[7],data2[8]);
+			format(ssss,sizeof(ssss)," Посадок в тюрьму: [%d] Секунд тюрьмы: [%d] Число затыков: [%d] Секунд затыка: [%d]", admData[playerid][dPrison],admData[playerid][dPrisonsec],admData[playerid][dMuted],admData[playerid][dMutedsec]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
-			format(ssss,sizeof(ssss)," Денег: [%d $] Убийств: [%d] Смертей: [%d] VIP LVL: [%d] Блокировка аккаунта: [%d]", data2[9],data2[10],data2[11],data2[12],data2[13]);
+			format(ssss,sizeof(ssss)," Денег: [%d $] Убийств: [%d] Смертей: [%d] VIP LVL: [%d] Блокировка аккаунта: [%d]", admData[playerid][dMoney],admData[playerid][dKills],admData[playerid][dDeaths],admData[playerid][dVIP],admData[playerid][dLock]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
-			format(ssss,sizeof(ssss)," Минут на сервере: [%d] Бессмертие: [%d] ( дополнительно: Депортация: [%d] )", data2[0],data2[3],data2[53]);
+			format(ssss,sizeof(ssss)," Минут на сервере: [%d] Бессмертие: [%d] ( дополнительно: Депортация: [%d] )", admData[playerid][dMinlog],admData[playerid][dAdmlive],datadep);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
 			if(fadm >= 2)
 			{
@@ -13469,8 +11985,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				format(ssss,sizeof(ssss)," Суточный денежный лимит: [%d] Остаток денежного лимита: [%d]", twenlim,restlim);
 				SendClientMessage(playerid, COLOR_GRAD1, ssss);
 			}
-			format(ssss,sizeof(ssss)," ID банды: [%d] Уровень в банде: [%d]", dopdata2,data2[15]);
+			format(ssss,sizeof(ssss)," ID банды: [%d] Уровень в банде: [%d]", dopdata2,admData[playerid][dGangLvl]);
 			SendClientMessage(playerid, COLOR_GRAD1, ssss);
+#endif
+#if (MOD77INS == 1 && MOD4DINS >= 1)
+			if(admData[playerid][dPassLock] == 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Внимание !!! Аккаунт заблокирован системой паспортов,");
+				SendClientMessage(playerid, COLOR_RED, " БЕЗ возможности восстановления !!!");
+			}
+#endif
+#if (MOD77INS == 1)
 			SendClientMessage(playerid, COLOR_LIGHTBLUE, "---------------------------------------------------------------");
 		}
 		else
@@ -13534,12 +12059,18 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	{
 		if(PlayerInfo[playerid][pAdmin] >= 3)
 		{
-			new locIP[64], srcakk[64], dopper44, dopper55;
+			new locIP[64], srcakk[64], adrip[128], dopper44, dopper55;
 			akk = strtok(cmdtext, idx);
 			if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /akksrc [имя аккаунта] [режим поиска");
 				SendClientMessage(playerid, COLOR_GRAD2, " (0- по шаблону XX.XX.*.*, 1- по шаблону XX.XX.XX.*)]");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -13557,9 +12088,9 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			else
 			{
-				new buffer[32], admlvl;//читаем данные из БД
+				new buffer[64], admlvl;//читаем данные из БД
 				db_get_field(querydb[playerid], 7, locIP, 64);//IPAdr
-				db_get_field(querydb[playerid], 9, buffer, 32); admlvl = strval(buffer);//AdminLevel
+				db_get_field(querydb[playerid], 9, buffer, 64); admlvl = strval(buffer);//AdminLevel
 				db_free_result(querydb[playerid]);//очищаем результат запроса БД
 				if(admlvl < 0) { admlvl = admlvl * -1; }
 				if(PlayerInfo[playerid][pAdmin] == 3 && admlvl >= 4)
@@ -13622,7 +12153,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		        for(new i = 0; i < dopper44; i++)
 		        {
 					db_get_field(querydb[playerid], 1, srcakk, 64);//Name
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
+					db_get_field(querydb[playerid], 7, adrip, 128);//IPAdr
 					if(i < dopper55)//если обрабатывается НЕ последняя строка, то:
 					{
 		            	db_next_row(querydb[playerid]);///переходим к следующей строке результат запроса БД
@@ -13755,6 +12286,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
 					SendClientMessage(playerid, COLOR_RED, " Выбранного [ИД админа] на сервере нет !");
 					return 1;
 				}
+				if(gPlayerLogged[para2] == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Выбранный [ИД админа] ещё не залогинился !");
+					return 1;
+				}
 				if(PlayerInfo[para2][pAdmin] == 0)
 				{
 					SendClientMessage(playerid, COLOR_RED, " Выбранный [ИД админа] - не админ !");
@@ -13873,11 +12409,16 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			if(para1 == 1)
 			{
-	   			new data2[54];
 				akk = strtok(cmdtext, idx);
 	    		if(!strlen(akk))
 				{
 					SendClientMessage(playerid, COLOR_RED, " [ник админа] [ИД настройки] !");
+					return 1;
+				}
+				if(InpNameControl(akk) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник админа содержит недопустимые");
+					SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 					return 1;
 				}
 				if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -13889,7 +12430,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				new doppara = 0;
 				while(para2 < MAX_PLAYERS)
 				{
-					if(IsPlayerConnected(para2))
+					if(IsPlayerConnected(para2) && gPlayerLogged[para2] == 1)
 					{
 						if(strcmp(akk, RealName[para2], false) == 0)
 						{
@@ -13901,347 +12442,27 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				}
 				if(doppara == 0)//если ник админа НЕ найден, то:
 				{//поиск ника админа в аккаунтах игроков
-#if (MOD90INS == 0)
-					format(string,sizeof(string),"players/%s.ini",akk);
-//        			format(string,sizeof(string),"%s.ini",akk);
-					if(!fexist(string))
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], akk);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
 					{
-						SendClientMessage(playerid,COLOR_RED," Выбранного ника админа не существует !");
+						SendClientMessage(playerid, COLOR_RED, " Выбранного ника админа не существует !");
 						return 1;
 					}
-#endif
-#if (MOD90INS == 1)
-					format(string,sizeof(string),"players/%s.ini",akk);
-//        			format(string,sizeof(string),"%s.ini",akk);
-					if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-					{//проверим регистрацию в SQLite
-						format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-						querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-						if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-						{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-							db_free_result(querydb[playerid]);//очищаем результат запроса БД
-							SendClientMessage(playerid,COLOR_RED," Выбранного ника админа не существует !");
-							return 1;
-						}
-						else
-						{
-							db_free_result(querydb[playerid]);//очищаем результат запроса БД
-						}
-					}
-#endif
-#if (MOD90INS == 0)
-					new File: UserFile = fopen(string, io_read);//чтение аккаунта
-					new key[ 256 ] , val[ 256 ];
-					new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
 					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-					    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-					    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-					    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-						if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-						if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-						if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-						if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-						if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-						if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-						if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-						if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-						if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-						if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-						if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-						if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//						if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//						if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//						if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//						if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//						if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//						if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//						if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//						if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//						if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//						if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//						if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-						if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-						if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-						if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-						if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-						if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-						if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-						if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-						if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-						if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-						if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-						if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-						if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-						if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-						if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-						if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-						if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-						if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-						if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-						if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-						if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-						if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-						if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-						if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-						if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-						if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-						if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-					}
-					fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new gngakkrd = 0;
-					new string999[256];
-					format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-					if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-					{
-						gngakkrd = 1;
-						new string333[256];
-						format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-						new File: UserFile333 = fopen(string333, io_read);//чтение файла
-						new key333[ 256 ] , val333[ 256 ];
-						new Data333[ 256 ];
-						while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-						{
-							key333 = ini_GetKey( Data333 );
-							if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-							if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-						}
-						fclose(UserFile333);
-					}
-					if(gngakkrd == 1)
-					{
-						new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-						if (hFile)
-						{
-							new var[32];
-							format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-							format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-							format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-							format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-							format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-							format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-							format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-							format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-							format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-							format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-							format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-							format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-							format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-							format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-							format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-							format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-							format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-							format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-							format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//							format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//							format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//							format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//							format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//							format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//							format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//							format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//							format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//							format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//							format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//							format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-							format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-							format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-							fclose(hFile);
-						}
-						fremove(string999);
-					}
-//---------------------------------- конец -------------------------------------
-#endif
-#if (MOD90INS == 1)
-					if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
-					{
-						new File: UserFile = fopen(string, io_read);//чтение аккаунта
-					    new key[ 256 ] , val[ 256 ];
-					    new Data[ 256 ];
-						while ( fread( UserFile , Data , sizeof( Data ) ) )
-						{
-							key = ini_GetKey( Data );
-							if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-							if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-							if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-							if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-					    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-					    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-					    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-					        if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-					        if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-					        if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-					        if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-					        if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-					        if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-					        if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-					        if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-					        if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-					        if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-					        if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-					        if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        		if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        		if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        		if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        		if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        		if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        		if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        		if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        		if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        		if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        		if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        		if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-					        if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-							if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-					        if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-		                }
-		                fclose(UserFile);
-						strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-						strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-						strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-						new gngakkrd = 0;
-						new string999[256];
-						format(string999,sizeof(string999),"gangs/players/%s.ini",akk);
-						if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-						{
-							gngakkrd = 1;
-							new string333[256];
-							format(string333,sizeof(string333),"gangs/players/%s.ini",akk);
-							new File: UserFile333 = fopen(string333, io_read);//чтение файла
-							new key333[ 256 ] , val333[ 256 ];
-							new Data333[ 256 ];
-							while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-							{
-								key333 = ini_GetKey( Data333 );
-								if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-								if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-							}
-							fclose(UserFile333);
-						}
-//---------------------------------- конец -------------------------------------
-
-						format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-						db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-						format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-						format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-						format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-						format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-						format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-						format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-						format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-						format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-						format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-						db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-						if(gngakkrd == 1)
-						{
-							fremove(string999);//удаляем аккаунт из системы банд
-						}
-//---------------------------------- конец -------------------------------------
-						if(fexist(string))
-						{
-							fremove(string);//удаляем аккаунт из fopen
-						}
-					}
-					else//иначе: (если аккаунт зарегистрирован в SQLite)
-					{
-						format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-						querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
-						if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
-						{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-							db_free_result(querydb[playerid]);//очищаем результат запроса БД
-							SendClientMessage(playerid,COLOR_RED," Ошибка чтения аккаунта игрока из БД !");
-							return 1;
-						}
-						else//иначе: (если аккаунт зарегистрирован в БД)
-						{
-							new buffer[32];//читаем данные из БД
-							db_get_field(querydb[playerid], 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-							db_free_result(querydb[playerid]);//очищаем результат запроса БД
-						}
+						SendClientMessage(playerid, COLOR_RED, " Внимание ! Аккаунт (ник админа) заблокирован системой паспортов !");
 					}
 #endif
 					new fadm;
-					if(data2[1] < 0)
+					if(admData[playerid][dAdmin] < 0)
 					{
-						fadm = data2[1] * -1;
+						fadm = admData[playerid][dAdmin] * -1;
 					}
 					else
 					{
-						fadm = data2[1];
+						fadm = admData[playerid][dAdmin];
 					}
 					if(fadm == 0)
 					{
@@ -14702,6 +12923,2363 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		}
 		return 1;
  	}
+	if(strcmp(cmd, "/scrnetper", true) == 0)
+	{
+		if(IsPlayerAdmin(playerid))
+		{
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /scrnetper [режим (0- удалить ник админа из определённого");
+				SendClientMessage(playerid, COLOR_GRAD2, " per-слота, 1- добавить ник админа в любой свободный per-слот, 2-");
+				SendClientMessage(playerid, COLOR_GRAD2, " просмотреть записи в per-слотах] [номер per-слота (только для режима 0),");
+				SendClientMessage(playerid, COLOR_GRAD2, " ник админа (только для режима 1)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 2)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 2 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер per-слота (0-19)] !");
+					return 1;
+				}
+				new para2;
+				para2 = strval(tmp);
+				if(para2 < 0 || para2 > 19)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер per-слота от 0 до 19 !");
+					return 1;
+				}
+				if(strcmp(scrnetper[para2], "*** INV_PL_ID", false) == 0)
+				{
+					format(string, sizeof(string), " per-слот %d не содержит никa админа !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetper[para2], 0, 64);//очистка слота
+				strcat(scrnetper[para2], "*** INV_PL_ID");
+				ScrNetPerSave(para2);//запись изменённого слота в per-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s удалил ник админа из per-слота %d .", RealName[playerid], para2);
+				print(string);
+				SendAdminMessage22(COLOR_RED, string, 1, 3);
+				return 1;
+			}
+			if(para1 == 1)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник админа содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника админа должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				new locplid;//для он-лайн - ид админа, для офф-лайн - -600
+				new locdata1 = 0;//поиск ника админа среди он-лайн игроков
+				new locdata2 = 0;
+				while(locdata1 < MAX_PLAYERS)
+				{
+					if(IsPlayerConnected(locdata1) && gPlayerLogged[locdata1] == 1)
+					{
+						if(strcmp(locname, RealName[locdata1], false) == 0)
+						{
+							locdata2 = 1;
+							locplid = locdata1;
+							break;
+						}
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)//если ник админа НЕ найден, то:
+				{//поиск ника админа в аккаунтах игроков
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+					{
+						SendClientMessage(playerid, COLOR_RED, " Такого ника админа не существует !");
+						return 1;
+					}
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник админа) заблокирован системой паспортов !");
+						return 1;
+					}
+#endif
+					locplid = -600;
+				}
+				new fadm;
+				if(locplid >= 0)//если ник админа он-лайн, то:
+				{
+					fadm = PlayerInfo[locplid][pAdmin];
+				}
+				else//иначе, если ник админа офф-лайн, то:
+				{
+					fadm = admData[playerid][dAdmin];
+				}
+				if(fadm < 0) { fadm = fadm * -1; }
+				if(fadm < 3)
+				{
+					format(string, sizeof(string), " Добавляемый ник - должен быть админом 3 лвл или выше !");
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(scrnetper[locdata1], "*** INV_PL_ID", false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного per-слота для добавления ника админа !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(locname, scrnetper[locdata1], false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					format(string, sizeof(string), " Добавляемый ник админа - уже имеется !");
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetper[locslnum], 0, 64);//очистка слота
+				strcat(scrnetper[locslnum], locname);//копирование ника админа в слот
+				ScrNetPerSave(locslnum);//запись изменённого слота в per-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s добавил ник админа %s в per-слот %d .", RealName[playerid], locname, locslnum);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+				return 1;
+			}
+			if(para1 == 2)
+			{
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				SendClientMessage(playerid, COLOR_WHITE, " --- per-слоты : ---");
+				for(new i = 0; i < 20; i++)
+				{
+					if(strcmp(scrnetper[i], "*** INV_PL_ID", false) == 0)
+					{
+						format(string, sizeof(string), " per-слот %d : пустой", i);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					}
+					else
+					{
+						format(string, sizeof(string), " per-слот %d : ник админа [%s]", i, scrnetper[i]);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					}
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел записи в per-слотах.", RealName[playerid]);
+				print(string);
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+	}
+	if(strcmp(cmd, "/scrnet1", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 3)
+		{
+			if(FnConAdmScrNet(RealName[playerid]) == -1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Для Вас, в данный момент, эта команда - НЕ доступна !");
+				return 1;
+			}
+			if(conopen222 == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Команда временно не доступна !");
+				return 1;
+			}
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /scrnet1 [режим (0- удалить группу IP-адресов из");
+				SendClientMessage(playerid, COLOR_GRAD2, " определённой IP-строки, 1- добавить группу IP-адресов в любую свободную");
+				SendClientMessage(playerid, COLOR_GRAD2, " IP-строку, 2- просмотреть запись в определённой IP-строке, 3- просмотреть");
+				SendClientMessage(playerid, COLOR_GRAD2, " IP-строки - в которые входит определённый IP-адрес] [номер IP-строки");
+				SendClientMessage(playerid, COLOR_GRAD2, " (только для режима 0), группа IP-адресов (только для режима 1), номер");
+				SendClientMessage(playerid, COLOR_GRAD2, " IP-строки (только для режима 2), IP-адрес (только для режима 3)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 3)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 3 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер IP-строки] !");
+					return 1;
+				}
+				new para2, locdata1;
+				para2 = strval(tmp);
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					format(string, sizeof(string), " IP-строка %d не содержит группу IP-адресов !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				ScrNet1Save(playerid, 3, para2);//запись изменённой строки в БД (удаление записи из строки)
+				format(string, sizeof(string), "[scrnet] *** Админ %s удалил группу IP-адресов из IP-строки %d сетевого экрана 1 .", RealName[playerid], para2);
+				print(string);
+				SendAdminMessage22(COLOR_RED, string, 1, 3);
+			    new fld[128];
+			    format(fld, sizeof(fld), "data/scrnet1/np1%05d.ini", para2);
+				if(fexist(fld))//если np-файл существует, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для IP-строки %d существует np-файл !", para2);
+					print(string);
+					SendClientMessage(playerid, 0x40CF40FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 1)
+			{
+				new locstr1[128], locstr2[128], locstr3[128];
+				strdel(locstr1, 0, 128);
+				strdel(locstr2, 0, 128);
+				strdel(locstr3, 0, 128);
+				locstr1 = strtok(cmdtext, idx);
+				locstr2 = strtok(cmdtext, idx);
+				locstr3 = strtok(cmdtext, idx);
+				if(strlen(locstr1) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " [группа IP-адресов (a.a.a.a - b.b.b.b)] !");
+					return 1;
+				}
+				if(strlen(locstr1) < 7 || strlen(locstr1) > 15 || strlen(locstr2) != 1 || locstr2[0] != 45 ||
+				strlen(locstr3) < 7 || strlen(locstr3) > 15)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании группы IP-адресов !");
+					return 1;
+				}
+				strcat(locstr1, " ");
+				strcat(locstr1, locstr2);
+				strcat(locstr1, " ");
+				strcat(locstr1, locstr3);
+				if(ScrNetCC(playerid, locstr1, 1, 0) == 0)
+				{//проверка группы IP-адресов на ошибки и посторонние символы
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании группы IP-адресов !");
+					return 1;
+				}
+				new locdata1;
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (Active = 1 ");//создаём запрос БД
+				format(strdln, sizeof(strdln), "%sAND %d = SN1b1 AND %d = SN1b2 AND %d = SN1b3 AND %d = SN1b4 ", strdln, scrnet1b[0][playerid], scrnet1b[1][playerid], scrnet1b[2][playerid], scrnet1b[3][playerid]);
+				format(strdln, sizeof(strdln), "%sAND %d = SN1e1 AND %d = SN1e2 AND %d = SN1e3 AND %d = SN1e4)", strdln, scrnet1e[0][playerid], scrnet1e[1][playerid], scrnet1e[2][playerid], scrnet1e[3][playerid]);
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 >= 1)//если была найдена хотя бы 1 строка с совпадающеё группой IP-адресов в БД, то:
+				{
+					SendClientMessage(playerid, COLOR_RED, " Добавляемая группа IP-адресов - уже имеется !");
+					return 1;
+				}
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (IDCopy = 1 AND Active = 0)");//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				if(locdata1 >= 1)//если была найдена хотя бы 1 строка с удалённой записью в БД, то:
+				{
+					new buffer[64];
+					db_get_field(qscrnet1db[playerid], 1, buffer, 64);//читаем из первой найденой записи БД номер строки
+					db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+					locdata1 = strval(buffer);
+					ScrNet1Save(playerid, 2, locdata1);//запись изменённой строки в БД (замена старой строки новыми данными)
+				}
+				else//иначе, если строк с удалённой записью НЕ найдено в БД, то:
+				{
+					db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+					format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (IDCopy = 1)");//создаём запрос БД
+					qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+					locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+					db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+					ScrNet1Save(playerid, 1, locdata1);//запись изменённой строки в БД (добавление новой строки)
+				}
+				format(string, sizeof(string), "[scrnet] *** Админ %s добавил группу IP-адресов [%s] в IP-строку %d сетевого экрана 1 .", RealName[playerid], locstr1, locdata1);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+			    new fld[128];
+			    format(fld, sizeof(fld), "data/scrnet1/np1%05d.ini", locdata1);
+				if(fexist(fld))//если np-файл существует, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для IP-строки %d существует np-файл !", locdata1);
+					print(string);
+					SendClientMessage(playerid, 0x40CF40FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 2)
+			{
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер IP-строки] !");
+					return 1;
+				}
+				new para2, locdata1;
+				para2 = strval(tmp);
+				if(para2 < 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер IP-строки - от 0 и больше !");
+					return 1;
+				}
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (IDCopy = 1 AND NumSt = %d)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+					format(string, sizeof(string), " IP-строка %d не найдена !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+				}
+				else//иначе, если строка была найдена в БД, то:
+				{
+					new buffer[64], locdata2, locdata3[64], fld[128];
+					db_get_field(qscrnet1db[playerid], 1, buffer, 64); locdata1 = strval(buffer);//NumSt
+					db_get_field(qscrnet1db[playerid], 2, buffer, 64); locdata2 = strval(buffer);//Active
+					db_get_field(qscrnet1db[playerid], 3, buffer, 64); scrnet1b[0][playerid] = strval(buffer);//SN1b1
+					db_get_field(qscrnet1db[playerid], 4, buffer, 64); scrnet1b[1][playerid] = strval(buffer);//SN1b2
+					db_get_field(qscrnet1db[playerid], 5, buffer, 64); scrnet1b[2][playerid] = strval(buffer);//SN1b3
+					db_get_field(qscrnet1db[playerid], 6, buffer, 64); scrnet1b[3][playerid] = strval(buffer);//SN1b4
+					db_get_field(qscrnet1db[playerid], 7, buffer, 64); scrnet1e[0][playerid] = strval(buffer);//SN1e1
+					db_get_field(qscrnet1db[playerid], 8, buffer, 64); scrnet1e[1][playerid] = strval(buffer);//SN1e2
+					db_get_field(qscrnet1db[playerid], 9, buffer, 64); scrnet1e[2][playerid] = strval(buffer);//SN1e3
+					db_get_field(qscrnet1db[playerid], 10, buffer, 64); scrnet1e[3][playerid] = strval(buffer);//SN1e4
+					db_get_field(qscrnet1db[playerid], 13, locdata3, 64);//NameAdm
+					db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+					if(locdata2 == 0)
+					{
+						format(string, sizeof(string), " Сетевой экран 1, IP-строка %d - НЕ активная !", locdata1);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+						format(string, sizeof(string), " IP-строка %d : [%d.%d.%d.%d - %d.%d.%d.%d] : удалена админом [%s]", locdata1,
+						scrnet1b[0][playerid], scrnet1b[1][playerid], scrnet1b[2][playerid], scrnet1b[3][playerid],
+						scrnet1e[0][playerid], scrnet1e[1][playerid], scrnet1e[2][playerid], scrnet1e[3][playerid], locdata3);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					    format(fld, sizeof(fld), "data/scrnet1/np1%05d.ini", locdata1);
+						if(fexist(fld))//если np-файл существует, то:
+						{
+							format(string, sizeof(string), "[scrnet] * Для IP-строки %d существует np-файл !", locdata1);
+							SendClientMessage(playerid, 0x40CF40FF, string);
+						}
+					}
+					else
+					{
+						format(string, sizeof(string), " Сетевой экран 1, IP-строка %d - Активная", locdata1);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+						format(string, sizeof(string), " IP-строка %d : [%d.%d.%d.%d - %d.%d.%d.%d] : добавлена админом [%s]", locdata1,
+						scrnet1b[0][playerid], scrnet1b[1][playerid], scrnet1b[2][playerid], scrnet1b[3][playerid],
+						scrnet1e[0][playerid], scrnet1e[1][playerid], scrnet1e[2][playerid], scrnet1e[3][playerid], locdata3);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					    format(fld, sizeof(fld), "data/scrnet1/np1%05d.ini", locdata1);
+						if(fexist(fld))//если np-файл существует, то:
+						{
+							format(string, sizeof(string), "[scrnet] * Для IP-строки %d существует np-файл !", locdata1);
+							SendClientMessage(playerid, 0x40CF40FF, string);
+						}
+					}
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+					format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел запись в IP-строке %d сетевого экрана 1 .", RealName[playerid], locdata1);
+					print(string);
+				}
+				return 1;
+			}
+			if(para1 == 3)
+			{
+				new locstr1[128];
+				strdel(locstr1, 0, 128);
+				locstr1 = strtok(cmdtext, idx);
+				if(strlen(locstr1) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " [IP-адрес (x.x.x.x)] !");
+					return 1;
+				}
+				new locipdata[4];
+				if(FnIPCon(locstr1, locipdata) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании IP-адреса !");
+					return 1;
+				}
+				new locipdata22;//собираем из IP-адреса данные - для поиска в БД
+				locipdata22 = (locipdata[0] * 65536) + (locipdata[1] * 256) + locipdata[2];
+				new locdata1, locmark1, locmark2, fld[128];
+				locmark1 = 0;//обнуляем маркер определения первой стоки
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (Active = 1 ");//создаём запрос БД
+				format(strdln, sizeof(strdln), "%sAND %d >= SN1b123 AND %d <= SN1e123)", strdln, locipdata22, locipdata22);
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				if(locdata1 != 0)//если в БД была найдена хотя бы одна строка, то:
+				{
+					new buffer[64], locdata2[3], locdata3[64];
+					for(new i = 0; i < locdata1; i++)
+					{
+						locmark2 = 0;//обнуляем маркер определения текущей строки
+						db_get_field(qscrnet1db[playerid], 1, buffer, 64); locdata2[0] = strval(buffer);//NumSt
+						db_get_field(qscrnet1db[playerid], 3, buffer, 64); scrnet1b[0][playerid] = strval(buffer);//SN1b1
+						db_get_field(qscrnet1db[playerid], 4, buffer, 64); scrnet1b[1][playerid] = strval(buffer);//SN1b2
+						db_get_field(qscrnet1db[playerid], 5, buffer, 64); scrnet1b[2][playerid] = strval(buffer);//SN1b3
+						db_get_field(qscrnet1db[playerid], 6, buffer, 64); scrnet1b[3][playerid] = strval(buffer);//SN1b4
+						db_get_field(qscrnet1db[playerid], 7, buffer, 64); scrnet1e[0][playerid] = strval(buffer);//SN1e1
+						db_get_field(qscrnet1db[playerid], 8, buffer, 64); scrnet1e[1][playerid] = strval(buffer);//SN1e2
+						db_get_field(qscrnet1db[playerid], 9, buffer, 64); scrnet1e[2][playerid] = strval(buffer);//SN1e3
+						db_get_field(qscrnet1db[playerid], 10, buffer, 64); scrnet1e[3][playerid] = strval(buffer);//SN1e4
+						db_get_field(qscrnet1db[playerid], 11, buffer, 64); locdata2[1] = strval(buffer);//SN1b123
+						db_get_field(qscrnet1db[playerid], 12, buffer, 64); locdata2[2] = strval(buffer);//SN1e123
+						db_get_field(qscrnet1db[playerid], 13, locdata3, 64);//NameAdm
+						if(locipdata22 == locdata2[1] && locipdata22 == locdata2[2])
+						{//если IP-адрес равен начальному И конечному значению из БД, то:
+							if(locipdata[3] >= scrnet1b[3][playerid] && locipdata[3] <= scrnet1e[3][playerid])
+							{//если 4-я группа IP-адреса входит в диапазон значений из БД, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 == locdata2[1] && locipdata22 < locdata2[2])
+						{//если IP-адрес равен начальному значению из БД, И меньше конечного значения из БД, то:
+							if(locipdata[3] >= scrnet1b[3][playerid])
+							{//если 4-я группа IP-адреса больше или равна начальному значению из БД, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 > locdata2[1] && locipdata22 == locdata2[2])
+						{//если IP-адрес больше начального значения из БД, И равен конечному значению из БД, то:
+							if(locipdata[3] <= scrnet1e[3][playerid])
+							{//если 4-я группа IP-адреса меньше или равна конечному значению из БД, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 > locdata2[1] && locipdata22 < locdata2[2])
+						{//если IP-адрес больше начального значения из БД, И меньше конечного значения из БД, то:
+							locmark2 = 1;//устанавливаем маркер определения текущей строки
+						}
+						if(locmark2 == 1)//если маркер определения текущей строки был установлен, то:
+						{
+							if(locmark1 == 0)//если маркер определения первой стоки равен нулю, то:
+							{
+								locmark1 = 1;//устанавливаем маркер определения первой стоки
+								SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+								format(string, sizeof(string), " --- IP-строки сетевого экрана 1 - в которые входит IP-адрес [%s] ---", locstr1);
+							}
+							format(string, sizeof(string), " IP-строка %d : [%d.%d.%d.%d - %d.%d.%d.%d] : добавлена админом [%s]", locdata2[0],
+							scrnet1b[0][playerid], scrnet1b[1][playerid], scrnet1b[2][playerid], scrnet1b[3][playerid],
+							scrnet1e[0][playerid], scrnet1e[1][playerid], scrnet1e[2][playerid], scrnet1e[3][playerid], locdata3);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						    format(fld, sizeof(fld), "data/scrnet1/np1%05d.ini", locdata2[0]);
+							if(fexist(fld))//если np-файл существует, то:
+							{
+								format(string, sizeof(string), "[scrnet] * Для IP-строки %d существует np-файл !", locdata2[0]);
+								SendClientMessage(playerid, 0x40CF40FF, string);
+							}
+						}
+						if(locdata1 != 1)//если в БД было найдено больше одной строки, то:
+						{
+							db_next_row(qscrnet1db[playerid]);///переходим к следующей строке результат запроса БД
+						}
+					}
+				}
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locmark1 == 1)//если маркер определения первой стоки был установлен, то:
+				{
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+					format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел IP-строки сетевого экрана 1 - в которые входит IP-адрес [%s] .", RealName[playerid], locstr1);
+					print(string);
+				}
+				else//иначе, если маркер определения первой стоки НЕ был установлен, то:
+				{
+					SendClientMessage(playerid, COLOR_RED, " Заданный IP-адрес не входит ни в одну из IP-строк !");
+				}
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+ 	}
+	if(strcmp(cmd, "/scrnetnp1", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 3)
+		{
+			if(FnConAdmScrNet(RealName[playerid]) == -1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Для Вас, в данный момент, эта команда - НЕ доступна !");
+				return 1;
+			}
+			if(conopen222 == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Команда временно не доступна !");
+				return 1;
+			}
+			new locdata1, locdata2;
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /scrnetnp1 [режим (0- удалить ник или паспорт игрока из");
+				SendClientMessage(playerid, COLOR_GRAD2, " определённого np-слота, 1- добавить ник игрока в любой свободный np-слот,");
+				SendClientMessage(playerid, COLOR_GRAD2, " 2- скопировать паспорт игрока в любой свободный np-слот, 3-просмотреть");
+				SendClientMessage(playerid, COLOR_GRAD2, " записи в np-слотах] [номер IP-строки сетевого экрана 1 (0-99990)] [номер");
+				SendClientMessage(playerid, COLOR_GRAD2, " np-слота (только для режима 0), ник игрока (только для режимов 1 и 2)]");
+				SendClientMessage(playerid, COLOR_GRAD2, " [номер паспорта игрока (только для режима 2)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 3)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 3 !");
+				return 1;
+			}
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_RED, " [номер IP-строки сетевого экрана 1 (0-99990)] !");
+				return 1;
+			}
+			new para2;
+			para2 = strval(tmp);
+			if(para2 < 0 || para2 > 99990)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Номер IP-строки сетевого экрана 1 от 0 до 99990 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				if(ScrNet1LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					format(string, sizeof(string), " np-файл %d не содержит ни одной записи !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер np-слота (0-19)] !");
+					return 1;
+				}
+				new para3;
+				para3 = strval(tmp);
+				if(para3 < 0 || para3 > 19)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер np-слота от 0 до 19 !");
+					return 1;
+				}
+				if(strcmp(scrnetnamegl[playerid][para3], "*** INV_PL_ID", false) == 0 &&
+				strcmp(scrnetpassgl[playerid][para3], "*** INV_PASS_ID", false) == 0)
+				{
+					format(string, sizeof(string), " np-слот %d не содержит ника или паспорта игрока !", para3);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][para3], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][para3], "*** INV_PL_ID");
+				strdel(scrnetpassgl[playerid][para3], 0, 64);//очистка слота
+				strcat(scrnetpassgl[playerid][para3], "*** INV_PASS_ID");
+				ScrNet1SaveNamePass(playerid, para2, para3);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s удалил ник или паспорт игрока из np-слота %d сетевого экрана 1 (IP-строка %d) .", RealName[playerid], para3, para2);
+				print(string);
+				SendAdminMessage22(COLOR_RED, string, 1, 3);
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-строки !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 1)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник игрока содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника игрока должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				locdata1 = 0;//поиск ника игрока среди он-лайн игроков
+				locdata2 = 0;
+				while(locdata1 < MAX_PLAYERS)
+				{
+					if(IsPlayerConnected(locdata1) && gPlayerLogged[locdata1] == 1)
+					{
+						if(strcmp(locname, RealName[locdata1], false) == 0)
+						{
+							locdata2 = 1;
+							break;
+						}
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)//если ник игрока НЕ найден, то:
+				{//поиск ника игрока в аккаунтах игроков
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+					{
+						SendClientMessage(playerid, COLOR_RED, " Такого ника игрока не существует !");
+						return 1;
+					}
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник игрока) заблокирован системой паспортов !");
+						return 1;
+					}
+#endif
+				}
+				if(ScrNet1LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					for(new i = 0; i < 20; i++)
+					{
+						format(scrnetnamegl[playerid][i], 64, "*** INV_PL_ID");//очищаем np-слоты
+						format(scrnetpassgl[playerid][i], 64, "*** INV_PASS_ID");
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(scrnetnamegl[playerid][locdata1], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][locdata1], "*** INV_PASS_ID", false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного np-слота для добавления ника игрока !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(locname, scrnetnamegl[playerid][locdata1], false) == 0 &&
+					strcmp("*** INV_PASS_ID", scrnetpassgl[playerid][locdata1], false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Добавляемый ник игрока - уже имеется !");
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][locslnum], locname);//копирование ника игрока в слот
+				ScrNet1SaveNamePass(playerid, para2, locslnum);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s добавил ник игрока %s в np-слот %d сетевого экрана 1 (IP-строка %d) .", RealName[playerid], locname, locslnum, para2);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-строки !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 2)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник игрока содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника игрока должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				new locplid;//для он-лайн - ид игрока, для офф-лайн - -600
+				locdata1 = 0;//поиск ника игрока среди он-лайн игроков
+				locdata2 = 0;
+				while(locdata1 < MAX_PLAYERS)
+				{
+					if(IsPlayerConnected(locdata1) && gPlayerLogged[locdata1] == 1)
+					{
+						if(strcmp(locname, RealName[locdata1], false) == 0)
+						{
+							locdata2 = 1;
+							locplid = locdata1;
+							break;
+						}
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)//если ник игрока НЕ найден, то:
+				{//поиск ника игрока в аккаунтах игроков
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+					{
+						SendClientMessage(playerid, COLOR_RED, " Такого ника игрока не существует !");
+						return 1;
+					}
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник игрока) заблокирован системой паспортов !");
+						return 1;
+					}
+#endif
+					locplid = -600;
+				}
+				if(ScrNet1LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					for(new i = 0; i < 20; i++)
+					{
+						format(scrnetnamegl[playerid][i], 64, "*** INV_PL_ID");//очищаем np-слоты
+						format(scrnetpassgl[playerid][i], 64, "*** INV_PASS_ID");
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(scrnetnamegl[playerid][locdata1], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][locdata1], "*** INV_PASS_ID", false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного np-слота для копирования паспорта игрока !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					switch(MOD4DINS)
+					{
+						case 0, 1: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1)] !");
+						case 2: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-2)] !");
+						case 3: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-3)] !");
+						case 4: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-4)] !");
+					}
+					return 1;
+				}
+				new para4;
+				para4 = strval(tmp);
+#if (MOD4DINS >= 0 && MOD4DINS <= 1)
+				if(para4 != 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер паспорта игрока = 1 !");
+					return 1;
+				}
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+				if(para4 < 1 || para4 > MOD4DINS)
+				{
+					format(string, sizeof(string), " Номер паспорта игрока от 1 до %d !", MOD4DINS);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+#endif
+				new locpass[64];
+				if(locplid >= 0)//если ник игрока он-лайн, то:
+				{
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data1]);
+						case 2: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data2]);
+						case 3: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data3]);
+						case 4: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data4]);
+					}
+				}
+				else//иначе, если ник игрока офф-лайн, то:
+				{
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), admData[playerid][dPass_data1]);
+						case 2: format(locpass, sizeof(locpass), admData[playerid][dPass_data2]);
+						case 3: format(locpass, sizeof(locpass), admData[playerid][dPass_data3]);
+						case 4: format(locpass, sizeof(locpass), admData[playerid][dPass_data4]);
+					}
+				}
+				if(strcmp(locpass, "---", false) == 0)//если паспорт пустой, то:
+				{
+					format(string, sizeof(string), " Паспорт %d игрока НЕ зарегистрирован, или уже был очищен !", para4);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				else
+				{
+					if(strcmp(locpass, "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)//если паспорт - мобильная версия на базе Андроид, то:
+					{
+						format(string, sizeof(string), " Паспорт %d игрока - мобильной версии, и НЕ может быть скопирован !", para4);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(locpass, scrnetpassgl[playerid][locdata1], false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					format(string, sizeof(string), " Копируемый паспорт %d игрока - уже имеется !", para4);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][locslnum], locname);//копирование ника игрока в слот
+				strdel(scrnetpassgl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetpassgl[playerid][locslnum], locpass);//копирование паспорта игрока в слот
+				ScrNet1SaveNamePass(playerid, para2, locslnum);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s скопировал паспорт %d игрока %s в np-слот %d сетевого экрана 1 (IP-строка %d) .", RealName[playerid], para4, locname, locslnum, para2);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-строки !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 3)
+			{
+				if(ScrNet1LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					format(string, sizeof(string), " np-файл %d не содержит ни одной записи !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), " --- Сетевой экран 1, IP-строка %d : ---", para2);
+				SendClientMessage(playerid, COLOR_WHITE, string);
+				for(new i = 0; i < 20; i++)
+				{
+					if(strcmp(scrnetnamegl[playerid][i], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][i], "*** INV_PASS_ID", false) == 0)
+					{
+						format(string, sizeof(string), " np-слот %d : пустой", i);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					}
+					else
+					{
+						if(scrnetpassgl[playerid][i][0] == 42)
+						{
+							format(string, sizeof(string), " np-слот %d : ник игрока [%s]", i, scrnetnamegl[playerid][i]);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						}
+						else
+						{
+							format(string, sizeof(string), " np-слот %d : паспорт игрока [%s]", i, scrnetnamegl[playerid][i]);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						}
+					}
+				}
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", para2);//создаём запрос БД
+				qscrnet1db[playerid] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[playerid]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[playerid]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-строки !", para2);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел записи в np-слотах сетевого экрана 1 (IP-строка %d) .", RealName[playerid], para2);
+				print(string);
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+ 	}
+	if(strcmp(cmd, "/scrnet2", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 3)
+		{
+			if(FnConAdmScrNet(RealName[playerid]) == -1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Для Вас, в данный момент, эта команда - НЕ доступна !");
+				return 1;
+			}
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /scrnet2 [режим (0- удалить группу IP-адресов из");
+				SendClientMessage(playerid, COLOR_GRAD2, " определённого IP-слота, 1- добавить группу IP-адресов в любой свободный");
+				SendClientMessage(playerid, COLOR_GRAD2, " IP-слот, 2- просмотреть записи в IP-слотах, 3- просмотреть IP-строки - в");
+				SendClientMessage(playerid, COLOR_GRAD2, " которые входит определённый IP-адрес] [номер IP-слота (только для режима 0),");
+				SendClientMessage(playerid, COLOR_GRAD2, " группа IP-адресов (только для режима 1), номер группы записей для просмотра");
+				SendClientMessage(playerid, COLOR_GRAD2, " от 1 до 8 (только для режима 2), IP-адрес (только для режима 3)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 3)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 3 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер IP-слота] !");
+					return 1;
+				}
+				new para2;
+				para2 = strval(tmp);
+				if(para2 < 0 || para2 > 199)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер IP-слота от 0 до 199 !");
+					return 1;
+				}
+				if(scrnet2b[0][para2] == 256)
+				{
+					format(string, sizeof(string), " IP-слот %d не содержит группу IP-адресов !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				for(new i = 0; i < 4; i++)//очистка слота
+				{
+					scrnet2b[i][para2] = 256;
+					scrnet2e[i][para2] = -1;
+				}
+				scrnet2b123[para2] = -1;
+				scrnet2e123[para2] = -1;
+				ScrNet2Save(para2);//запись изменённого слота в файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s удалил группу IP-адресов из IP-слота %d сетевого экрана 2 .", RealName[playerid], para2);
+				print(string);
+				SendAdminMessage22(COLOR_RED, string, 1, 3);
+			    new fld[128];
+			    format(fld, sizeof(fld), "data/scrnet2/np2%03d.ini", para2);
+				if(fexist(fld))//если np-файл существует, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для IP-слота %d существует np-файл !", para2);
+					print(string);
+					SendClientMessage(playerid, 0x40CF40FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 1)
+			{
+				new locstr1[128], locstr2[128], locstr3[128];
+				strdel(locstr1, 0, 128);
+				strdel(locstr2, 0, 128);
+				strdel(locstr3, 0, 128);
+				locstr1 = strtok(cmdtext, idx);
+				locstr2 = strtok(cmdtext, idx);
+				locstr3 = strtok(cmdtext, idx);
+				if(strlen(locstr1) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " [группа IP-адресов (a.a.a.a - b.b.b.b)] !");
+					return 1;
+				}
+				if(strlen(locstr1) < 7 || strlen(locstr1) > 15 || strlen(locstr2) != 1 || locstr2[0] != 45 ||
+				strlen(locstr3) < 7 || strlen(locstr3) > 15)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании группы IP-адресов !");
+					return 1;
+				}
+				strcat(locstr1, " ");
+				strcat(locstr1, locstr2);
+				strcat(locstr1, " ");
+				strcat(locstr1, locstr3);
+				new locdata1 = 0;
+				new locdata2 = 0;
+				while(locdata1 < 200)
+				{
+					if(scrnet2b[0][locdata1] == 256)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного IP-слота для добавления группы IP-адресов !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 200)
+				{
+					format(locstr3, sizeof(locstr3), "%d.%d.%d.%d - %d.%d.%d.%d",
+					scrnet2b[0][locdata1], scrnet2b[1][locdata1], scrnet2b[2][locdata1], scrnet2b[3][locdata1],
+					scrnet2e[0][locdata1], scrnet2e[1][locdata1], scrnet2e[2][locdata1], scrnet2e[3][locdata1]);
+					if(strcmp(locstr1, locstr3, false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Добавляемая группа IP-адресов - уже имеется !");
+					return 1;
+				}
+				if(ScrNetCC(0, locstr1, 2, locslnum) == 0)
+				{//проверка группы IP-адресов на ошибки и посторонние символы
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании группы IP-адресов !");
+					return 1;
+				}
+				ScrNet2Save(locslnum);//запись изменённого слота в файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s добавил группу IP-адресов [%s] в IP-слот %d сетевого экрана 2 .", RealName[playerid], locstr1, locslnum);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+			    new fld[128];
+			    format(fld, sizeof(fld), "data/scrnet2/np2%03d.ini", locslnum);
+				if(fexist(fld))//если np-файл существует, то:
+				{
+					format(string, sizeof(string), "[scrnet] * Для IP-слота %d существует np-файл !", locslnum);
+					print(string);
+					SendClientMessage(playerid, 0x40CF40FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 2)
+			{
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер группы записей для просмотра (1-8)] !");
+					return 1;
+				}
+				new para2;
+				para2 = strval(tmp);
+				if(para2 < 1 || para2 > 8)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер группы записей для просмотра от 1 до 8 !");
+					return 1;
+				}
+				new locdata1 = (para2 - 1) * 25;
+				new locdata2 = ((para2 - 1) * 25) + 25;
+			    new fld[128];
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				for(new i = locdata1; i < locdata2; i++)
+				{
+					if(scrnet2b[0][i] == 256)
+					{
+						format(string, sizeof(string), " Сетевой экран 2, IP-слот %d : пустой", i);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					    format(fld, sizeof(fld), "data/scrnet2/np2%03d.ini", i);
+						if(fexist(fld))//если np-файл существует, то:
+						{
+							format(string, sizeof(string), "[scrnet] * Для IP-слота %d существует np-файл !", i);
+							SendClientMessage(playerid, 0x40CF40FF, string);
+						}
+					}
+					else
+					{
+						format(string, sizeof(string), " Сетевой экран 2, IP-слот %d : [%d.%d.%d.%d - %d.%d.%d.%d]", i,
+						scrnet2b[0][i], scrnet2b[1][i], scrnet2b[2][i], scrnet2b[3][i],
+						scrnet2e[0][i], scrnet2e[1][i], scrnet2e[2][i], scrnet2e[3][i]);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					    format(fld, sizeof(fld), "data/scrnet2/np2%03d.ini", i);
+						if(fexist(fld))//если np-файл существует, то:
+						{
+							format(string, sizeof(string), "[scrnet] * Для IP-слота %d существует np-файл !", i);
+							SendClientMessage(playerid, 0x40CF40FF, string);
+						}
+					}
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел записи в IP-слотах от %d до %d сетевого экрана 2 .", RealName[playerid], locdata1, locdata2 - 1);
+				print(string);
+				return 1;
+			}
+			if(para1 == 3)
+			{
+				new locstr1[128];
+				strdel(locstr1, 0, 128);
+				locstr1 = strtok(cmdtext, idx);
+				if(strlen(locstr1) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " [IP-адрес (x.x.x.x)] !");
+					return 1;
+				}
+				new locipdata[4];
+				if(FnIPCon(locstr1, locipdata) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ошибка в написании IP-адреса !");
+					return 1;
+				}
+				new locipdata22;//собираем из IP-адреса данные - для поиска в сетевом экране 1
+				locipdata22 = (locipdata[0] * 65536) + (locipdata[1] * 256) + locipdata[2];
+				new locmark1, locmark2, fld[128];
+				locmark1 = 0;//обнуляем маркер определения первой стоки
+				for(new i = 0; i < 200; i++)
+				{
+					locmark2 = 0;//обнуляем маркер определения текущей строки
+					if(locipdata22 >= scrnet2b123[i] && locipdata22 <= scrnet2e123[i])
+					{
+						if(locipdata22 == scrnet2b123[i] && locipdata22 == scrnet2e123[i])
+						{//если IP-адрес равен начальному И конечному значению, то:
+							if(locipdata[3] >= scrnet2b[3][i] && locipdata[3] <= scrnet2e[3][i])
+							{//если 4-я группа IP-адреса входит в диапазон значений, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 == scrnet2b123[i] && locipdata22 < scrnet2e123[i])
+						{//если IP-адрес равен начальному значению, И меньше конечного значения, то:
+							if(locipdata[3] >= scrnet2b[3][i])
+							{//если 4-я группа IP-адреса больше или равна начальному значению, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 > scrnet2b123[i] && locipdata22 == scrnet2e123[i])
+						{//если IP-адрес больше начального значения, И равен конечному значению, то:
+							if(locipdata[3] <= scrnet2e[3][i])
+							{//если 4-я группа IP-адреса меньше или равна конечному значению, то:
+								locmark2 = 1;//устанавливаем маркер определения текущей строки
+							}
+						}
+						if(locipdata22 > scrnet2b123[i] && locipdata22 < scrnet2e123[i])
+						{//если IP-адрес больше начального значения, И меньше конечного значения, то:
+							locmark2 = 1;//устанавливаем маркер определения текущей строки
+						}
+						if(locmark2 == 1)//если маркер определения текущей строки был установлен, то:
+						{
+							if(locmark1 == 0)//если маркер определения первой стоки равен нулю, то:
+							{
+								locmark1 = 1;//устанавливаем маркер определения первой стоки
+								SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+								format(string, sizeof(string), " --- IP-слоты сетевого экрана 2 - в которые входит IP-адрес [%s] ---", locstr1);
+							}
+							format(string, sizeof(string), " IP-слот %d : [%d.%d.%d.%d - %d.%d.%d.%d]", i,
+							scrnet2b[0][i], scrnet2b[1][i], scrnet2b[2][i], scrnet2b[3][i],
+							scrnet2e[0][i], scrnet2e[1][i], scrnet2e[2][i], scrnet2e[3][i]);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						    format(fld, sizeof(fld), "data/scrnet2/np2%03d.ini", i);
+							if(fexist(fld))//если np-файл существует, то:
+							{
+								format(string, sizeof(string), "[scrnet] * Для IP-слота %d существует np-файл !", i);
+								SendClientMessage(playerid, 0x40CF40FF, string);
+							}
+						}
+					}
+				}
+				if(locmark1 == 1)//если маркер определения первой стоки был установлен, то:
+				{
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+					format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел IP-слоты сетевого экрана 2 - в которые входит IP-адрес [%s] .", RealName[playerid], locstr1);
+					print(string);
+				}
+				else//иначе, если маркер определения первой стоки НЕ был установлен, то:
+				{
+					SendClientMessage(playerid, COLOR_RED, " Заданный IP-адрес не входит ни в один из IP-слотов !");
+				}
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+ 	}
+	if(strcmp(cmd, "/scrnetnp2", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 3)
+		{
+			if(FnConAdmScrNet(RealName[playerid]) == -1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Для Вас, в данный момент, эта команда - НЕ доступна !");
+				return 1;
+			}
+			new locdata1, locdata2;
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /scrnetnp2 [режим (0- удалить ник или паспорт игрока из");
+				SendClientMessage(playerid, COLOR_GRAD2, " определённого np-слота, 1- добавить ник игрока в любой свободный np-слот,");
+				SendClientMessage(playerid, COLOR_GRAD2, " 2- скопировать паспорт игрока в любой свободный np-слот, 3-просмотреть");
+				SendClientMessage(playerid, COLOR_GRAD2, " записи в np-слотах] [номер IP-слота сетевого экрана 2 (0-199)] [номер");
+				SendClientMessage(playerid, COLOR_GRAD2, " np-слота (только для режима 0), ник игрока (только для режимов 1 и 2)]");
+				SendClientMessage(playerid, COLOR_GRAD2, " [номер паспорта игрока (только для режима 2)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 3)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 3 !");
+				return 1;
+			}
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_RED, " [номер IP-слота сетевого экрана 2 (0-199)] !");
+				return 1;
+			}
+			new para2;
+			para2 = strval(tmp);
+			if(para2 < 0 || para2 > 199)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Номер IP-слота сетевого экрана 2 от 0 до 199 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				if(ScrNet2LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					format(string, sizeof(string), " np-файл %d не содержит ни одной записи !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [номер np-слота (0-19)] !");
+					return 1;
+				}
+				new para3;
+				para3 = strval(tmp);
+				if(para3 < 0 || para3 > 19)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер np-слота от 0 до 19 !");
+					return 1;
+				}
+				if(strcmp(scrnetnamegl[playerid][para3], "*** INV_PL_ID", false) == 0 &&
+				strcmp(scrnetpassgl[playerid][para3], "*** INV_PASS_ID", false) == 0)
+				{
+					format(string, sizeof(string), " np-слот %d не содержит ника или паспорта игрока !", para3);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][para3], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][para3], "*** INV_PL_ID");
+				strdel(scrnetpassgl[playerid][para3], 0, 64);//очистка слота
+				strcat(scrnetpassgl[playerid][para3], "*** INV_PASS_ID");
+				ScrNet2SaveNamePass(playerid, para2, para3);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s удалил ник или паспорт игрока из np-слота %d сетевого экрана 2 (IP-слот %d) .", RealName[playerid], para3, para2);
+				print(string);
+				SendAdminMessage22(COLOR_RED, string, 1, 3);
+				if(scrnet2b[0][para2] == 256)
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-слота !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 1)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник игрока содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника игрока должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				locdata1 = 0;//поиск ника игрока среди он-лайн игроков
+				locdata2 = 0;
+				while(locdata1 < MAX_PLAYERS)
+				{
+					if(IsPlayerConnected(locdata1) && gPlayerLogged[locdata1] == 1)
+					{
+						if(strcmp(locname, RealName[locdata1], false) == 0)
+						{
+							locdata2 = 1;
+							break;
+						}
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)//если ник игрока НЕ найден, то:
+				{//поиск ника игрока в аккаунтах игроков
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+					{
+						SendClientMessage(playerid, COLOR_RED, " Такого ника игрока не существует !");
+						return 1;
+					}
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник игрока) заблокирован системой паспортов !");
+						return 1;
+					}
+#endif
+				}
+				if(ScrNet2LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					for(new i = 0; i < 20; i++)
+					{
+						format(scrnetnamegl[playerid][i], 64, "*** INV_PL_ID");//очищаем np-слоты
+						format(scrnetpassgl[playerid][i], 64, "*** INV_PASS_ID");
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(scrnetnamegl[playerid][locdata1], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][locdata1], "*** INV_PASS_ID", false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного np-слота для добавления ника игрока !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(locname, scrnetnamegl[playerid][locdata1], false) == 0 &&
+					strcmp("*** INV_PASS_ID", scrnetpassgl[playerid][locdata1], false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Добавляемый ник игрока - уже имеется !");
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][locslnum], locname);//копирование ника игрока в слот
+				ScrNet2SaveNamePass(playerid, para2, locslnum);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s добавил ник игрока %s в np-слот %d сетевого экрана 2 (IP-слот %d) .", RealName[playerid], locname, locslnum, para2);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+				if(scrnet2b[0][para2] == 256)
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-слота !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 2)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник игрока содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника игрока должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				new locplid;//для он-лайн - ид игрока, для офф-лайн - -600
+				locdata1 = 0;//поиск ника игрока среди он-лайн игроков
+				locdata2 = 0;
+				while(locdata1 < MAX_PLAYERS)
+				{
+					if(IsPlayerConnected(locdata1) && gPlayerLogged[locdata1] == 1)
+					{
+						if(strcmp(locname, RealName[locdata1], false) == 0)
+						{
+							locdata2 = 1;
+							locplid = locdata1;
+							break;
+						}
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)//если ник игрока НЕ найден, то:
+				{//поиск ника игрока в аккаунтах игроков
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+					{
+						SendClientMessage(playerid, COLOR_RED, " Такого ника игрока не существует !");
+						return 1;
+					}
+#if (MOD4DINS >= 1)
+					if(admData[playerid][dPassLock] == 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник игрока) заблокирован системой паспортов !");
+						return 1;
+					}
+#endif
+					locplid = -600;
+				}
+				if(ScrNet2LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					for(new i = 0; i < 20; i++)
+					{
+						format(scrnetnamegl[playerid][i], 64, "*** INV_PL_ID");//очищаем np-слоты
+						format(scrnetpassgl[playerid][i], 64, "*** INV_PASS_ID");
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(scrnetnamegl[playerid][locdata1], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][locdata1], "*** INV_PASS_ID", false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Нет свободного np-слота для копирования паспорта игрока !");
+					return 1;
+				}
+				new locslnum;
+				locslnum = locdata1;
+				tmp = strtok(cmdtext, idx);
+				if(!strlen(tmp))
+				{
+					switch(MOD4DINS)
+					{
+						case 0, 1: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1)] !");
+						case 2: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-2)] !");
+						case 3: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-3)] !");
+						case 4: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-4)] !");
+					}
+					return 1;
+				}
+				new para4;
+				para4 = strval(tmp);
+#if (MOD4DINS >= 0 && MOD4DINS <= 1)
+				if(para4 != 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Номер паспорта игрока = 1 !");
+					return 1;
+				}
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+				if(para4 < 1 || para4 > MOD4DINS)
+				{
+					format(string, sizeof(string), " Номер паспорта игрока от 1 до %d !", MOD4DINS);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+#endif
+				new locpass[64];
+				if(locplid >= 0)//если ник игрока он-лайн, то:
+				{
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data1]);
+						case 2: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data2]);
+						case 3: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data3]);
+						case 4: format(locpass, sizeof(locpass), PlayerInfo[locplid][pPass_data4]);
+					}
+				}
+				else//иначе, если ник игрока офф-лайн, то:
+				{
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), admData[playerid][dPass_data1]);
+						case 2: format(locpass, sizeof(locpass), admData[playerid][dPass_data2]);
+						case 3: format(locpass, sizeof(locpass), admData[playerid][dPass_data3]);
+						case 4: format(locpass, sizeof(locpass), admData[playerid][dPass_data4]);
+					}
+				}
+				if(strcmp(locpass, "---", false) == 0)//если паспорт пустой, то:
+				{
+					format(string, sizeof(string), " Паспорт %d игрока НЕ зарегистрирован, или уже был очищен !", para4);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				else
+				{
+					if(strcmp(locpass, "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)//если паспорт - мобильная версия на базе Андроид, то:
+					{
+						format(string, sizeof(string), " Паспорт %d игрока - мобильной версии, и НЕ может быть скопирован !", para4);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+				}
+				locdata1 = 0;
+				locdata2 = 0;
+				while(locdata1 < 20)
+				{
+					if(strcmp(locpass, scrnetpassgl[playerid][locdata1], false) == 0)
+					{
+						locdata2 = 1;
+						break;
+					}
+					locdata1++;
+				}
+				if(locdata2 == 1)
+				{
+					format(string, sizeof(string), " Копируемый паспорт %d игрока - уже имеется !", para4);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				strdel(scrnetnamegl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetnamegl[playerid][locslnum], locname);//копирование ника игрока в слот
+				strdel(scrnetpassgl[playerid][locslnum], 0, 64);//очистка слота
+				strcat(scrnetpassgl[playerid][locslnum], locpass);//копирование паспорта игрока в слот
+				ScrNet2SaveNamePass(playerid, para2, locslnum);//запись изменённого слота в np-файл
+				format(string, sizeof(string), "[scrnet] *** Админ %s скопировал паспорт %d игрока %s в np-слот %d сетевого экрана 2 (IP-слот %d) .", RealName[playerid], para4, locname, locslnum, para2);
+				print(string);
+				SendAdminMessage22(COLOR_YELLOW, string, 1, 3);
+				if(scrnet2b[0][para2] == 256)
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-слота !", para2);
+					print(string);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				return 1;
+			}
+			if(para1 == 3)
+			{
+				if(ScrNet2LoadNamePass(playerid, para2) == 0)//если np-файла не существует, то:
+				{
+					format(string, sizeof(string), " np-файл %d не содержит ни одной записи !", para2);
+					SendClientMessage(playerid, COLOR_RED, string);
+					return 1;
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), " --- Сетевой экран 2, IP-слот %d : ---", para2);
+				SendClientMessage(playerid, COLOR_WHITE, string);
+				for(new i = 0; i < 20; i++)
+				{
+					if(strcmp(scrnetnamegl[playerid][i], "*** INV_PL_ID", false) == 0 &&
+					strcmp(scrnetpassgl[playerid][i], "*** INV_PASS_ID", false) == 0)
+					{
+						format(string, sizeof(string), " np-слот %d : пустой", i);
+						SendClientMessage(playerid, COLOR_GRAD1, string);
+					}
+					else
+					{
+						if(scrnetpassgl[playerid][i][0] == 42)
+						{
+							format(string, sizeof(string), " np-слот %d : ник игрока [%s]", i, scrnetnamegl[playerid][i]);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						}
+						else
+						{
+							format(string, sizeof(string), " np-слот %d : паспорт игрока [%s]", i, scrnetnamegl[playerid][i]);
+							SendClientMessage(playerid, COLOR_GRAD1, string);
+						}
+					}
+				}
+				if(scrnet2b[0][para2] == 256)
+				{
+					format(string, sizeof(string), "[scrnet] * Для np-файла %d НЕ существует IP-слота !", para2);
+					SendClientMessage(playerid, 0xCF4040FF, string);
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+				format(string, sizeof(string), "[scrnet] *** Админ %s просмотрел записи в np-слотах сетевого экрана 2 (IP-слот %d) .", RealName[playerid], para2);
+				print(string);
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+ 	}
+	if(strcmp(cmd, "/scrnetv", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 1)
+		{
+			if(scrnetv[playerid] == 1)
+			{
+				scrnetv[playerid] = 0;
+				format(string,sizeof(string)," *** Админ %s выключил просмотр действий сетевых экранов.", RealName[playerid]);
+				print(string);
+				SendAdminMessage(COLOR_RED, string);
+				return 1;
+			}
+			else
+			{
+				scrnetv[playerid] = 1;
+				format(string,sizeof(string)," *** Админ %s включил просмотр действий сетевых экранов.", RealName[playerid]);
+				print(string);
+				SendAdminMessage(COLOR_GREEN, string);
+				return 1;
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+	}
+#if (MOD90INS == 1 && MOD7AINS == 1)
+	if(strcmp(cmd, "/passrc", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 3)
+		{
+			new passdata[9][64], srcakk[64], dopper44, dopper55, plock;
+			akk = strtok(cmdtext, idx);
+			if(!strlen(akk))
+			{
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1 && MOD4DINS >= 0 && MOD4DINS <= 1)
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /passrc [имя аккаунта] [номер паспорта аккаунта (1)]");
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1 && MOD4DINS >= 2 && MOD4DINS <= 4)
+				format(string, sizeof(string), " Используйте: /passrc [имя аккаунта] [номер паспорта аккаунта (1-%d)]", MOD4DINS);
+				SendClientMessage(playerid, COLOR_GRAD2, string);
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1)
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
+				return 1;
+			}
+			if(strlen(akk) < 1 || strlen(akk) > 25)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Длина имени аккаунта должна быть от 1 до 25 символов !");
+				return 1;
+			}
+			format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
+			querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
+			if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
+			{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
+				db_free_result(querydb[playerid]);//очищаем результат запроса БД
+				SendClientMessage(playerid,COLOR_RED," Такого аккаунта не существует !");
+				return 1;
+			}
+			else
+			{
+				new buffer[64], admlvl;//читаем данные из БД
+				db_get_field(querydb[playerid], 9, buffer, 64); admlvl = strval(buffer);//AdminLevel
+				db_get_field(querydb[playerid], 50, passdata[1], 64);//Pass_data1
+				db_get_field(querydb[playerid], 54, passdata[2], 64);//Pass_data2
+				db_get_field(querydb[playerid], 58, passdata[3], 64);//Pass_data3
+				db_get_field(querydb[playerid], 62, passdata[4], 64);//Pass_data4
+				db_get_field(querydb[playerid], 68, buffer, 64); plock = strval(buffer);//PassLock
+				db_free_result(querydb[playerid]);//очищаем результат запроса БД
+				if(admlvl < 0) { admlvl = admlvl * -1; }
+				if(PlayerInfo[playerid][pAdmin] == 3 && admlvl >= 4)
+				{
+					SendClientMessage(playerid,COLOR_RED," Вы не можете просмотреть аккаунт админа 4-го уровня !");
+					return 1;
+				}
+				if(plock == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Внимание ! Аккаунт заблокирован системой паспортов !");
+				}
+			}
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				switch(MOD4DINS)
+				{
+					case 0, 1: SendClientMessage(playerid, COLOR_RED, " [номер паспорта аккаунта (1)] !");
+					case 2: SendClientMessage(playerid, COLOR_RED, " [номер паспорта аккаунта (1-2)] !");
+					case 3: SendClientMessage(playerid, COLOR_RED, " [номер паспорта аккаунта (1-3)] !");
+					case 4: SendClientMessage(playerid, COLOR_RED, " [номер паспорта аккаунта (1-4)] !");
+				}
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1 && MOD4DINS >= 0 && MOD4DINS <= 1)
+			if(para1 != 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Номер паспорта аккаунта = 1 !");
+				return 1;
+			}
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1 && MOD4DINS >= 2 && MOD4DINS <= 4)
+			if(para1 < 1 || para1 > MOD4DINS)
+			{
+				format(string, sizeof(string), " Номер паспорта аккаунта от 1 до %d !", MOD4DINS);
+				SendClientMessage(playerid, COLOR_RED, string);
+				return 1;
+			}
+#endif
+#if (MOD90INS == 1 && MOD7AINS == 1)
+			if(strcmp(passdata[para1], "---", false) == 0)//если паспорт пустой, то:
+			{
+				format(string, sizeof(string), " Паспорт %d аккаунта НЕ зарегистрирован, или был очищен !", para1);
+				SendClientMessage(playerid, COLOR_RED, string);
+				return 1;
+			}
+			new para2;
+			if(strcmp(passdata[para1], "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)
+			{//если паспорт - мобильная версия на базе Андроид, то:
+				para2 = 0;
+			}
+			else//иначе, если паспорт - НЕ мобильная версия на базе Андроид, то:
+			{
+				para2 = 1;
+			}
+			format(strdln, sizeof(strdln), "SELECT * FROM Players WHERE (Pass_data1 = '%s' ", passdata[para1]);//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sOR Pass_data2 = '%s' OR Pass_data3 = '%s' ", strdln, passdata[para1], passdata[para1]);
+			format(strdln, sizeof(strdln), "%sOR Pass_data4 = '%s')", strdln, passdata[para1]);
+			querydb[playerid] = db_query(playerdb, strdln);//отправляем запрос БД (поиск всех паспортов passdata[para1])
+			dopper44 = db_num_rows(querydb[playerid]);//переведём результат запроса в число найденных строк в БД
+			dopper55 = dopper44 - 1;
+			if(dopper44 == 0)
+			{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
+				db_free_result(querydb[playerid]);//очищаем результат запроса БД
+				SendClientMessage(playerid,COLOR_RED," Ошибка чтения данных из БД !");
+				return 1;
+			}
+			else//читаем данные из БД
+			{
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-------------------------------------------------------------------------------");
+				if(plock == 1)
+				{
+					format(ssss,sizeof(ssss)," Внимание ! Аккаунт %s заблокирован системой паспортов !", akk);
+					SendClientMessage(playerid, COLOR_RED, ssss);
+				}
+				if(para2 == 0)
+				{
+					format(ssss,sizeof(ssss)," Всего найдено аккаунтов: %d ( аккаунт %s , паспорт %d [MOB] )", dopper44, akk, para1);
+				}
+				else
+				{
+					format(ssss,sizeof(ssss)," Всего найдено аккаунтов: %d ( аккаунт %s , паспорт %d [PC] )", dopper44, akk, para1);
+				}
+				SendClientMessage(playerid, COLOR_GRAD1, ssss);
+		        for(new i = 0; i < dopper44; i++)
+		        {
+					db_get_field(querydb[playerid], 1, srcakk, 64);//Name
+					db_get_field(querydb[playerid], 50, passdata[5], 64);//Pass_data1
+					db_get_field(querydb[playerid], 54, passdata[6], 64);//Pass_data2
+					db_get_field(querydb[playerid], 58, passdata[7], 64);//Pass_data3
+					db_get_field(querydb[playerid], 62, passdata[8], 64);//Pass_data4
+					if(i < dopper55)//если обрабатывается НЕ последняя строка, то:
+					{
+		            	db_next_row(querydb[playerid]);///переходим к следующей строке результат запроса БД
+					}
+					if(strcmp(passdata[para1], passdata[5], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," %d). Аккаунт: [%s] Паспорт: [1]", i+1, srcakk);
+					}
+					if(strcmp(passdata[para1], passdata[6], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," %d). Аккаунт: [%s] Паспорт: [2]", i+1, srcakk);
+					}
+					if(strcmp(passdata[para1], passdata[7], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," %d). Аккаунт: [%s] Паспорт: [3]", i+1, srcakk);
+					}
+					if(strcmp(passdata[para1], passdata[8], false) == 0)
+					{
+						format(ssss,sizeof(ssss)," %d). Аккаунт: [%s] Паспорт: [4]", i+1, srcakk);
+					}
+					if(strcmp(akk, srcakk, false) == 0)
+					{
+						SendClientMessage(playerid, COLOR_YELLOW, ssss);
+					}
+					else
+					{
+						SendClientMessage(playerid, COLOR_GRAD1, ssss);
+					}
+		        }
+				db_free_result(querydb[playerid]);//очищаем результат запроса БД
+				if(para2 == 0)
+				{
+					format(ssss,sizeof(ssss)," Всего найдено аккаунтов: %d ( аккаунт %s , паспорт %d [MOB] )", dopper44, akk, para1);
+				}
+				else
+				{
+					format(ssss,sizeof(ssss)," Всего найдено аккаунтов: %d ( аккаунт %s , паспорт %d [PC] )", dopper44, akk, para1);
+				}
+				SendClientMessage(playerid, COLOR_GRAD1, ssss);
+				if(plock == 1)
+				{
+					format(ssss,sizeof(ssss)," Внимание ! Аккаунт %s заблокирован системой паспортов !", akk);
+					SendClientMessage(playerid, COLOR_RED, ssss);
+				}
+				SendClientMessage(playerid, COLOR_LIGHTBLUE, "-------------------------------------------------------------------------------");
+				printf("[pass] *** Админ %s просмотрел совпадения паспорта %d аккаунта игрока %s .", RealName[playerid], para1, akk);
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+	}
+#endif
+#if (MOD4DINS >= 1)
+	if(strcmp(cmd, "/cvpass", true) == 0)
+	{
+		if(PlayerInfo[playerid][pAdmin] >= 1)
+		{
+			tmp = strtok(cmdtext, idx);
+			if(!strlen(tmp))
+			{
+				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /cvpass [режим (0- по ИД игрока, 1- по нику игрока)]");
+				SendClientMessage(playerid, COLOR_GRAD2, " [ИД игрока / ник игрока] [действие (0- очистить паспорт игрока,");
+				SendClientMessage(playerid, COLOR_GRAD2, " 1- очистить ошибки входных данных, 2- просмотреть все паспорта");
+				SendClientMessage(playerid, COLOR_GRAD2, " игрока] [номер паспорта игрока (только для действия 0)]");
+				return 1;
+			}
+			new para1;
+			para1 = strval(tmp);
+			if(para1 < 0 || para1 > 1)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Режим от 0 до 1 !");
+				return 1;
+			}
+			if(para1 == 0)
+			{
+				tmp = strtok(cmdtext, idx);
+	    		if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [ИД игрока] [действие] ( [номер паспорта игрока] ) !");
+					return 1;
+				}
+				new para2;
+				para2 = strval(tmp);
+				if(!IsPlayerConnected(para2))
+				{
+					SendClientMessage(playerid, COLOR_RED, " Такого [ИД игрока] на сервере нет !");
+					return 1;
+				}
+				if(gPlayerLogged[para2] == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Игрок ещё не залогинился !");
+					return 1;
+				}
+				if(PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[para2][pAdmin] >= 4)
+				{
+#endif
+#if (MOD4DINS == 1)
+					SendClientMessage(playerid, COLOR_RED, " Вы не можете очистить или просмотреть паспорт админа 4-го уровня !");
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					SendClientMessage(playerid, COLOR_RED, " Вы не можете очистить или просмотреть паспорта админа 4-го уровня !");
+#endif
+#if (MOD4DINS >= 1)
+					return 1;
+				}
+				tmp = strtok(cmdtext, idx);
+	    		if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [действие (0- очистить паспорт игрока, 1- очистить ошибки");
+					SendClientMessage(playerid, COLOR_RED, " входных данных, 2- просмотреть все паспорта игрока]");
+					SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (только для действия 0)] !");
+					return 1;
+				}
+				new para3;
+				para3 = strval(tmp);
+				if(para3 < 0 || para3 > 2)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Действие от 0 до 2 !");
+					return 1;
+				}
+				if(para3 == 0)
+				{
+					tmp = strtok(cmdtext, idx);
+					if(!strlen(tmp))
+					{
+						switch(MOD4DINS)
+						{
+							case 1: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1)] !");
+							case 2: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-2)] !");
+							case 3: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-3)] !");
+							case 4: SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (1-4)] !");
+						}
+						return 1;
+					}
+					new para4;
+					para4 = strval(tmp);
+#endif
+#if (MOD4DINS == 1)
+					if(para4 != 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Номер паспорта игрока = 1 !");
+						return 1;
+					}
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					if(para4 < 1 || para4 > MOD4DINS)
+					{
+						format(string, sizeof(string), " Номер паспорта игрока от 1 до %d !", MOD4DINS);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+#endif
+#if (MOD4DINS >= 1)
+					if(playconpass[para2] == para4)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Очистить используемый паспорт игрока - нельзя !");
+						return 1;
+					}
+					new locpass[64];
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), PlayerInfo[para2][pPass_data1]);
+						case 2: format(locpass, sizeof(locpass), PlayerInfo[para2][pPass_data2]);
+						case 3: format(locpass, sizeof(locpass), PlayerInfo[para2][pPass_data3]);
+						case 4: format(locpass, sizeof(locpass), PlayerInfo[para2][pPass_data4]);
+					}
+					if(strcmp(locpass, "---", false) == 0)//если паспорт пустой, то:
+					{
+						format(string, sizeof(string), " Паспорт %d игрока НЕ зарегистрирован, или уже был очищен !", para4);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+					PlayerInfo[para2][pPassDel]++;//счётчик очистки паспортов +1
+					switch(para4)//очистка паспортов
+					{
+						case 1:
+						{
+							format(PlayerInfo[para2][pPass_data1], 64, "---");
+							format(PlayerInfo[para2][pPass_inout1], 64, "---");
+							format(PlayerInfo[para2][pPass_ver1], 32, "---");
+							PlayerInfo[para2][pPass_count1] = 0;
+						}
+						case 2:
+						{
+							format(PlayerInfo[para2][pPass_data2], 64, "---");
+							format(PlayerInfo[para2][pPass_inout2], 64, "---");
+							format(PlayerInfo[para2][pPass_ver2], 32, "---");
+							PlayerInfo[para2][pPass_count2] = 0;
+						}
+						case 3:
+						{
+							format(PlayerInfo[para2][pPass_data3], 64, "---");
+							format(PlayerInfo[para2][pPass_inout3], 64, "---");
+							format(PlayerInfo[para2][pPass_ver3], 32, "---");
+							PlayerInfo[para2][pPass_count3] = 0;
+						}
+						case 4:
+						{
+							format(PlayerInfo[para2][pPass_data4], 64, "---");
+							format(PlayerInfo[para2][pPass_inout4], 64, "---");
+							format(PlayerInfo[para2][pPass_ver4], 32, "---");
+							PlayerInfo[para2][pPass_count4] = 0;
+						}
+					}
+					format(string, sizeof(string), "[pass] *** Админ %s очистил паспорт %d игрока %s , всего очисток: %d .", RealName[playerid], para4, RealName[para2], PlayerInfo[para2][pPassDel]);
+					print(string);
+					SendAdminMessage(COLOR_YELLOW, string);
+					return 1;
+				}
+				if(para3 == 1)
+				{
+					if(PlayerInfo[para2][pPassError] == 0)//если НЕТ ошибок входных данных, то:
+					{
+						SendClientMessage(playerid, COLOR_RED, " Ошибок входных данных у игрока - НЕТ, или ошибки уже были очищены !");
+						return 1;
+					}
+					PlayerInfo[para2][pPassError] = 0;//очистка ошибок входных данных
+					PlayerInfo[para2][pPassDel]++;//счётчик очистки паспортов +1
+					format(string, sizeof(string), "[pass] *** Админ %s очистил ошибки входных данных игрока %s , всего очисток: %d .", RealName[playerid], RealName[para2], PlayerInfo[para2][pPassDel]);
+					print(string);
+					SendAdminMessage(COLOR_YELLOW, string);
+					return 1;
+				}
+				if(para3 == 2)
+				{
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+#endif
+#if (MOD4DINS == 1)
+					format(string, sizeof(string), " --- Паспорт игрока %s [%d] : ---", RealName[para2], para2);
+					SendClientMessage(playerid, COLOR_WHITE, string);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					format(string, sizeof(string), " --- Паспорта игрока %s [%d] : ---", RealName[para2], para2);
+					SendClientMessage(playerid, COLOR_WHITE, string);
+#endif
+#if (MOD4DINS >= 1)
+					if((PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[para2][pAdmin] == 0) ||
+					(PlayerInfo[playerid][pAdmin] <= 3 && playerid == para2))
+					{
+						FnPrnPass(5, playerid, para2);//печать для админа /cvpass , данные от он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+					}
+					if(PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[para2][pAdmin] >= 1 && playerid != para2)
+					{
+						FnPrnPass(6, playerid, para2);//печать для админа /cvpass , данные от он-лайн админа [pPass_ver1]
+					}
+					if(PlayerInfo[playerid][pAdmin] >= 4)
+					{
+						FnPrnPass(5, playerid, para2);//печать для админа /cvpass , данные от он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+					}
+					format(string, sizeof(string), " Всего очисток: [%d] Ошибок входных данных: [%d] (из 4-х)", PlayerInfo[para2][pPassDel], PlayerInfo[para2][pPassError]);
+					SendClientMessage(playerid, COLOR_GRAD1, string);
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+#endif
+#if (MOD4DINS == 1)
+					format(string, sizeof(string), "[pass] *** Админ %s просмотрел паспорт игрока %s .", RealName[playerid], RealName[para2]);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					format(string, sizeof(string), "[pass] *** Админ %s просмотрел все паспорта игрока %s .", RealName[playerid], RealName[para2]);
+#endif
+#if (MOD4DINS >= 1)
+					print(string);
+					return 1;
+				}
+			}
+			if(para1 == 1)
+			{
+				new locname[64];
+				locname = strtok(cmdtext, idx);
+	    		if(!strlen(locname))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [ник игрока] [действие] ( [номер паспорта игрока] ) !");
+					return 1;
+				}
+				if(InpNameControl(locname) == 0)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Ник игрока содержит недопустимые символы: знак процентов, или ~ !");
+					return 1;
+				}
+				if(strlen(locname) < 1 || strlen(locname) > 25)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Длина ника игрока должна быть от 1 до 25 символов !");
+					return 1;
+				}
+				for(new i = 0; i < MAX_PLAYERS; i++)//проверка ника на On-Line
+				{
+	   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
+			    	{
+						if(strcmp(locname, RealName[i], false) == 0)
+						{
+							format(string, sizeof(string), " Ошибка, ник игрока %s On-Line !", locname);
+							SendClientMessage(playerid, COLOR_RED, string);
+							return 1;
+						}
+					}
+				}
+				strdel(dAccName[playerid], 0, 64);
+				strcat(dAccName[playerid], locname);
+				if(AccDataLoadUn(playerid) == 0)//чтение аккаунта
+				{
+					SendClientMessage(playerid, COLOR_RED, " Такого ника игрока не существует !");
+					return 1;
+				}
+				if(admData[playerid][dPassLock] == 1)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Аккаунт (ник игрока) заблокирован системой паспортов !");
+					return 1;
+				}
+				new fadm;
+				fadm = admData[playerid][dAdmin];
+				if(fadm < 0) { fadm = fadm * -1; }
+				if(PlayerInfo[playerid][pAdmin] <= 3 && fadm >= 4)
+				{
+#endif
+#if (MOD4DINS == 1)
+					SendClientMessage(playerid, COLOR_RED, " Вы не можете очистить или просмотреть паспорт ника админа 4-го уровня !");
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					SendClientMessage(playerid, COLOR_RED, " Вы не можете очистить или просмотреть паспорта ника админа 4-го уровня !");
+#endif
+#if (MOD4DINS >= 1)
+					return 1;
+				}
+				tmp = strtok(cmdtext, idx);
+	    		if(!strlen(tmp))
+				{
+					SendClientMessage(playerid, COLOR_RED, " [действие (0- очистить паспорт игрока, 1- очистить ошибки");
+					SendClientMessage(playerid, COLOR_RED, " входных данных, 2- просмотреть все паспорта игрока]");
+					SendClientMessage(playerid, COLOR_RED, " [номер паспорта игрока (только для действия 0)] !");
+					return 1;
+				}
+				new para3;
+				para3 = strval(tmp);
+				if(para3 < 0 || para3 > 2)
+				{
+					SendClientMessage(playerid, COLOR_RED, " Действие от 0 до 2 !");
+					return 1;
+				}
+				if(para3 == 0)
+				{
+					tmp = strtok(cmdtext, idx);
+					if(!strlen(tmp))
+					{
+						switch(MOD4DINS)
+						{
+							case 1: SendClientMessage(playerid, COLOR_RED, " [номер паспорта ника игрока (1)] !");
+							case 2: SendClientMessage(playerid, COLOR_RED, " [номер паспорта ника игрока (1-2)] !");
+							case 3: SendClientMessage(playerid, COLOR_RED, " [номер паспорта ника игрока (1-3)] !");
+							case 4: SendClientMessage(playerid, COLOR_RED, " [номер паспорта ника игрока (1-4)] !");
+						}
+						return 1;
+					}
+					new para4;
+					para4 = strval(tmp);
+#endif
+#if (MOD4DINS == 1)
+					if(para4 != 1)
+					{
+						SendClientMessage(playerid, COLOR_RED, " Номер паспорта ника игрока = 1 !");
+						return 1;
+					}
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					if(para4 < 1 || para4 > MOD4DINS)
+					{
+						format(string, sizeof(string), " Номер паспорта ника игрока от 1 до %d !", MOD4DINS);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+#endif
+#if (MOD4DINS >= 1)
+					new locpass[64];
+					switch(para4)
+					{
+						case 1: format(locpass, sizeof(locpass), admData[playerid][dPass_data1]);
+						case 2: format(locpass, sizeof(locpass), admData[playerid][dPass_data2]);
+						case 3: format(locpass, sizeof(locpass), admData[playerid][dPass_data3]);
+						case 4: format(locpass, sizeof(locpass), admData[playerid][dPass_data4]);
+					}
+					if(strcmp(locpass, "---", false) == 0)//если паспорт пустой, то:
+					{
+						format(string, sizeof(string), " Паспорт %d ника игрока НЕ зарегистрирован, или уже был очищен !", para4);
+						SendClientMessage(playerid, COLOR_RED, string);
+						return 1;
+					}
+					admData[playerid][dPassDel]++;//счётчик очистки паспортов +1
+					switch(para4)//очистка паспортов
+					{
+						case 1:
+						{
+							format(admData[playerid][dPass_data1], 64, "---");
+							format(admData[playerid][dPass_inout1], 64, "---");
+							format(admData[playerid][dPass_ver1], 32, "---");
+							admData[playerid][dPass_count1] = 0;
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 1)
+							format(strdln, sizeof(strdln), "UPDATE Players SET ");//создаём запрос БД
+							format(strdln, sizeof(strdln), "%sPass_data1 = '%s',Pass_inout1 = '%s',", strdln, admData[playerid][dPass_data1],admData[playerid][dPass_inout1]);
+							format(strdln, sizeof(strdln), "%sPass_ver1 = '%s',Pass_count1 = %d,", strdln, admData[playerid][dPass_ver1],admData[playerid][dPass_count1]);
+							format(strdln, sizeof(strdln), "%sPassDel = %d WHERE (Name = '%s')", strdln, admData[playerid][dPassDel], locname);
+							db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+#if (MOD4DINS >= 1)
+						}
+						case 2:
+						{
+							format(admData[playerid][dPass_data2], 64, "---");
+							format(admData[playerid][dPass_inout2], 64, "---");
+							format(admData[playerid][dPass_ver2], 32, "---");
+							admData[playerid][dPass_count2] = 0;
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 1)
+							format(strdln, sizeof(strdln), "UPDATE Players SET ");//создаём запрос БД
+							format(strdln, sizeof(strdln), "%sPass_data2 = '%s',Pass_inout2 = '%s',", strdln, admData[playerid][dPass_data2],admData[playerid][dPass_inout2]);
+							format(strdln, sizeof(strdln), "%sPass_ver2 = '%s',Pass_count2 = %d,", strdln, admData[playerid][dPass_ver2],admData[playerid][dPass_count2]);
+							format(strdln, sizeof(strdln), "%sPassDel = %d WHERE (Name = '%s')", strdln, admData[playerid][dPassDel], locname);
+							db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+#if (MOD4DINS >= 1)
+						}
+						case 3:
+						{
+							format(admData[playerid][dPass_data3], 64, "---");
+							format(admData[playerid][dPass_inout3], 64, "---");
+							format(admData[playerid][dPass_ver3], 32, "---");
+							admData[playerid][dPass_count3] = 0;
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 1)
+							format(strdln, sizeof(strdln), "UPDATE Players SET ");//создаём запрос БД
+							format(strdln, sizeof(strdln), "%sPass_data3 = '%s',Pass_inout3 = '%s',", strdln, admData[playerid][dPass_data3],admData[playerid][dPass_inout3]);
+							format(strdln, sizeof(strdln), "%sPass_ver3 = '%s',Pass_count3 = %d,", strdln, admData[playerid][dPass_ver3],admData[playerid][dPass_count3]);
+							format(strdln, sizeof(strdln), "%sPassDel = %d WHERE (Name = '%s')", strdln, admData[playerid][dPassDel], locname);
+							db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+#if (MOD4DINS >= 1)
+						}
+						case 4:
+						{
+							format(admData[playerid][dPass_data4], 64, "---");
+							format(admData[playerid][dPass_inout4], 64, "---");
+							format(admData[playerid][dPass_ver4], 32, "---");
+							admData[playerid][dPass_count4] = 0;
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 1)
+							format(strdln, sizeof(strdln), "UPDATE Players SET ");//создаём запрос БД
+							format(strdln, sizeof(strdln), "%sPass_data4 = '%s',Pass_inout4 = '%s',", strdln, admData[playerid][dPass_data4],admData[playerid][dPass_inout4]);
+							format(strdln, sizeof(strdln), "%sPass_ver4 = '%s',Pass_count4 = %d,", strdln, admData[playerid][dPass_ver4],admData[playerid][dPass_count4]);
+							format(strdln, sizeof(strdln), "%sPassDel = %d WHERE (Name = '%s')", strdln, admData[playerid][dPassDel], locname);
+							db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+#if (MOD4DINS >= 1)
+						}
+					}
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 0)
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					AccDataSaveFo(playerid);//запись изменённого аккаунта
+#endif
+#if (MOD4DINS >= 1)
+					format(string, sizeof(string), "[pass] *** Админ %s очистил паспорт %d ника игрока %s , всего очисток: %d .", RealName[playerid], para4, locname, admData[playerid][dPassDel]);
+					print(string);
+					SendAdminMessage(COLOR_YELLOW, string);
+					return 1;
+				}
+				if(para3 == 1)
+				{
+					if(admData[playerid][dPassError] == 0)//если НЕТ ошибок входных данных, то:
+					{
+						SendClientMessage(playerid, COLOR_RED, " Ошибок входных данных у ника игрока - НЕТ, или ошибки уже были очищены !");
+						return 1;
+					}
+					admData[playerid][dPassDel]++;//счётчик очистки паспортов +1
+					admData[playerid][dPassError] = 0;//очистка ошибок входных данных
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 0)
+					strdel(dAccName[playerid], 0, 64);
+					strcat(dAccName[playerid], locname);
+					AccDataSaveFo(playerid);//запись изменённого аккаунта
+#endif
+#if (MOD4DINS >= 1 && MOD90INS == 1)
+					format(strdln, sizeof(strdln), "UPDATE Players SET PassError = %d,", admData[playerid][dPassError]);//создаём запрос БД
+					format(strdln, sizeof(strdln), "%sPassDel = %d WHERE (Name = '%s')", strdln, admData[playerid][dPassDel], locname);
+					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+#if (MOD4DINS >= 1)
+					format(string, sizeof(string), "[pass] *** Админ %s очистил ошибки входных данных ника игрока %s , всего очисток: %d .", RealName[playerid], locname, admData[playerid][dPassDel]);
+					print(string);
+					SendAdminMessage(COLOR_YELLOW, string);
+					return 1;
+				}
+				if(para3 == 2)
+				{
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+#endif
+#if (MOD4DINS == 1)
+					format(string, sizeof(string), " --- Паспорт ника игрока %s : ---", locname);
+					SendClientMessage(playerid, COLOR_WHITE, string);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					format(string, sizeof(string), " --- Паспорта ника игрока %s : ---", locname);
+					SendClientMessage(playerid, COLOR_WHITE, string);
+#endif
+#if (MOD4DINS >= 1)
+					if((PlayerInfo[playerid][pAdmin] <= 3 && fadm == 0) ||
+					(PlayerInfo[playerid][pAdmin] <= 3 && strcmp(RealName[playerid], locname, false) == 0))
+					{
+						FnPrnPass(7, playerid, 0);//печать для админа /cvpass , данные от офф-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+					}
+					if(PlayerInfo[playerid][pAdmin] <= 3 && fadm >= 1 && strcmp(RealName[playerid], locname, false) != 0)
+					{
+						FnPrnPass(8, playerid, 0);//печать для админа /cvpass , данные от офф-лайн админа [pPass_ver1]
+					}
+					if(PlayerInfo[playerid][pAdmin] >= 4)
+					{
+						FnPrnPass(7, playerid, 0);//печать для админа /cvpass , данные от офф-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+					}
+					format(string, sizeof(string), " Всего очисток: [%d] Ошибок входных данных: [%d] (из 4-х)", admData[playerid][dPassDel], admData[playerid][dPassError]);
+					SendClientMessage(playerid, COLOR_GRAD1, string);
+					SendClientMessage(playerid, COLOR_LIGHTBLUE, "-----------------------------------------------------------------");
+#endif
+#if (MOD4DINS == 1)
+					format(string, sizeof(string), "[pass] *** Админ %s просмотрел паспорт ника игрока %s .", RealName[playerid], locname);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+					format(string, sizeof(string), "[pass] *** Админ %s просмотрел все паспорта ника игрока %s .", RealName[playerid], locname);
+#endif
+#if (MOD4DINS >= 1)
+					print(string);
+					return 1;
+				}
+			}
+		}
+		else
+		{
+			SendClientMessage(playerid, COLOR_RED, " У Вас нет прав на использование этой команды !");
+		}
+		return 1;
+	}
+#endif
 
 //------------------------------ BusSystem -------------------------------------
 	if(strcmp(cmd, "/helpbus", true) == 0)
@@ -14822,6 +15400,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		    busminute[para4] = para2;//задаём, через сколько минут бизнес будет приносить доход
 		    busincome[para4] = para3;//задаём доход от бизнеса
 		    busday[para4] = 0;//даём бизнесу право на его перекупку (покупку)
+			busmoney[para4] = busminute[para4];//копируем в счётчик минут бизнеса - минуты бизнеса
 
     		new file, f[256];//запись бизнеса в файл
 	    	format(f, 256, "bussystem/%i.ini", para4);
@@ -14839,6 +15418,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 		    	ini_setFloat(file, "CordX", buscordx[para4]);
 		    	ini_setFloat(file, "CordY", buscordy[para4]);
 		    	ini_setFloat(file, "CordZ", buscordz[para4]);
+		    	ini_setInteger(file, "Count", busmoney[para4]);
 				ini_closeFile(file);
 			}
 
@@ -15280,11 +15860,16 @@ public OnPlayerCommandText(playerid, cmdtext[])
     {
    		if(PlayerInfo[playerid][pAdmin] >= 4)
     	{
-   			new data2[53];
     		akk = strtok(cmdtext, idx);
     		if(!strlen(akk))
 			{
 				SendClientMessage(playerid, COLOR_GRAD2, " Используйте: /delakk [имя аккаунта]");
+				return 1;
+			}
+			if(InpNameControl(akk) == 0)
+			{
+				SendClientMessage(playerid, COLOR_RED, " Имя аккаунта содержит недопустимые");
+				SendClientMessage(playerid, COLOR_RED, " символы: знак процентов, или ~ !");
 				return 1;
 			}
 			if(strlen(akk) < 1 || strlen(akk) > 25)
@@ -15322,7 +15907,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 #endif
 			for(new i=0;i<MAX_PLAYERS;i++)//проверка аккаунта на On-Line
 			{
-   				if(IsPlayerConnected(i))
+   				if(IsPlayerConnected(i) && gPlayerLogged[i] == 1)
 		    	{
 					if(strcmp(akk, RealName[i], false) == 0)
 					{
@@ -15339,67 +15924,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			while ( fread( UserFile , Data , sizeof( Data ) ) )
 			{
 				key = ini_GetKey( Data );
-				if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-				if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-				if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-				if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-				if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-				if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-				if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-				if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-				if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-				if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-				if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-				if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-				if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-				if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//				if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//				if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//				if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//				if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//				if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//				if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//				if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//				if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//				if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//				if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//				if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-				if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-				if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-				if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-				if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-				if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-				if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-				if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-				if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-				if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-				if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-				if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-				if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-				if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-				if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-				if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-				if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-				if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-				if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-				if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-				if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-				if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-				if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-				if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-				if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-				if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-				if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
+				if( strcmp( key , "IPAdr" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dIPAdr], val, 0, strlen(val)-1, 128); }
+				if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmin] = strval( val ); }
+				if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGang] = strval( val ); }
+				if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGangLvl] = strval( val ); }
 			}
 			fclose(UserFile);
-			strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-			strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-			strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
 #endif
 #if (MOD90INS == 1)
 			if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
@@ -15410,67 +15940,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				while ( fread( UserFile , Data , sizeof( Data ) ) )
 				{
 					key = ini_GetKey( Data );
-					if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-					if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-					if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-					if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    	if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    	if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    	if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-					if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-					if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-					if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-					if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-					if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-					if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-					if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-					if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-					if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-					if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-					if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-					if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//					if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//					if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//					if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//					if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//					if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//					if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//					if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//					if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//					if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//					if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//					if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-					if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-					if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-					if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-					if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-					if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-					if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-					if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-					if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-					if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-					if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-					if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-					if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-					if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-					if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-					if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-					if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-					if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-					if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-					if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-					if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-					if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-					if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-					if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-					if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-					if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-					if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
+					if( strcmp( key , "IPAdr" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dIPAdr], val, 0, strlen(val)-1, 128); }
+					if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmin] = strval( val ); }
+					if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGang] = strval( val ); }
+					if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGangLvl] = strval( val ); }
 				}
 				fclose(UserFile);
-				strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-				strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-				strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
 			}
 			else//иначе: (если аккаунт зарегистрирован в SQLite)
 			{
@@ -15484,10 +15959,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				}
 				else//иначе: (если аккаунт зарегистрирован в БД)
 				{
-					new buffer[32];//читаем данные из БД
-					db_get_field(querydb[playerid], 7, adrip, 256);//IPAdr
-					db_get_field(querydb[playerid], 22, buffer, 32); data2[14] = strval(buffer);//Gang
-					db_get_field(querydb[playerid], 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
+					new buffer[64];//читаем данные из БД
+					db_get_field(querydb[playerid], 7, admData[playerid][dIPAdr], 128);
+					db_get_field(querydb[playerid], 9, buffer, 64); admData[playerid][dAdmin] = strval(buffer);
+					db_get_field(querydb[playerid], 22, buffer, 64); admData[playerid][dGang] = strval(buffer);
+					db_get_field(querydb[playerid], 23, buffer, 64); admData[playerid][dGangLvl] = strval(buffer);
 					db_free_result(querydb[playerid]);//очищаем результат запроса БД
 				}
 			}
@@ -15495,7 +15971,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			new string222[256], string333[256], idfile;
 			idfile = 0;
 			new ip333[128];
-			ip333 = ConvIP(adrip);
+			ip333 = ConvIP(admData[playerid][dIPAdr]);
 			format(string222,sizeof(string222),"banlist/players/%s.ini",akk);
 			if(fexist(string222))//читаем аккаунт из бан-листа (если файл существует)
 			{
@@ -15512,6 +15988,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 				strdel(string333, strlen(string333)-1, strlen(string333));//корректировка причины бана
 			}
 
+			if(admData[playerid][dAdmin] != 0)
+			{
+				AdmUpdate(akk, 0, 7);
+			}
 #if (MOD90INS == 0)
 			if(fexist(string))
 			{
@@ -15530,6 +16010,15 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			print(ssss);
 			SendClientMessageToAll(COLOR_LIGHTBLUE, ssss);
 
+			for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+			{
+				if(strcmp(akk, scrnetper[i], false) == 0)//если ник админа найден, то:
+				{
+					strdel(scrnetper[i], 0, 64);//очистка слота
+					strcat(scrnetper[i], "*** INV_PL_ID");
+					ScrNetPerSave(i);//запись изменённого слота в per-файл
+				}
+			}
 			new twenlim, restlim;
 			Fmadmins(0, akk, 0, twenlim, restlim);
 			format(string222,sizeof(string222),"bantime/%d.ini",idfile);
@@ -15552,7 +16041,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			if(fexist(string222))//удаляем IP-адрес из бан-листа (если файл существует)
 			{
 				fremove(string222);//удаляем IP-адрес из бан-листа
-				format(ssss,sizeof(ssss)," *** удалил IP-адрес [%s] из бан-листа (автоматически) .", adrip);
+				format(ssss,sizeof(ssss)," *** удалил IP-адрес [%s] из бан-листа (автоматически) .", admData[playerid][dIPAdr]);
 				print(ssss);
 				SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 				format(ssss,sizeof(ssss)," *** удалил IP-адрес игрока [%s] из бан-листа (автоматически) .", akk);
@@ -15566,10 +16055,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			}
 			strdel(ssss, 0, 256);//очистка переменной для разбана
 			strcat(ssss, "unbanip ");//сборка RCON-команды разбана
-			strcat(ssss, adrip);
+			strcat(ssss, admData[playerid][dIPAdr]);
 			SendRconCommand(ssss);//RCON-команда разбана
 			SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
-			format(ssss,sizeof(ssss)," ( IP: [%s] был удалён из файла samp.ban ) !", adrip);
+			format(ssss,sizeof(ssss)," ( IP: [%s] был удалён из файла samp.ban ) !", admData[playerid][dIPAdr]);
 			print(ssss);
 			SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 			format(ssss,sizeof(ssss)," ( IP-адрес игрока [%s] был удалён из файла samp.ban ) !", akk);
@@ -15583,42 +16072,25 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			CallRemoteFunction("vehsys3delakkfunc", "ds", playerid, akk);//возврата транспорта на продажу в скрипте vehsys3
 			CallRemoteFunction("banksysdelakkfunc", "ds", playerid, akk);//удаление банковского счёта в скрипте banksys
 
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-			format(string,sizeof(string),"gangs/players/%s.ini",akk);
-			if(fexist(string))//читаем аккаунт из системы банд (если файл существует)
+			if(admData[playerid][dGangLvl] == 6)//если удаляемый аккаунт - лидер банды, то:
 			{
-    			new f[256];
-    			format(f, 256, "gangs/players/%s.ini", akk);
-				new file = ini_openFile(f);
-				if(file >= 0)
-				{
-	    			ini_getInteger(file, "Gang", data2[14]);
-	    			ini_getInteger(file, "GangLvl", data2[15]);
-					ini_closeFile(file);
-				}
-				fremove(string);//удаляем аккаунт из системы банд
-			}
-//---------------------------------- конец -------------------------------------
-			if(data2[15] == 6)//если удаляемый аккаунт - лидер банды, то:
-			{
-				format(string,sizeof(string),"gangs/%d.ini",data2[14]);
+				format(string,sizeof(string),"gangs/%d.ini",admData[playerid][dGang]);
 				if(fexist(string))//если файл с ID банды существует, то:
 				{
-					GangSA[data2[14]] = 0;//запрещаем запись ID банды в файл
-					SetTimerEx("DelAkk22", 300, 0, "i", data2[14]);
+					GangSA[admData[playerid][dGang]] = 0;//запрещаем запись ID банды в файл
+					SetTimerEx("DelAkk22", 300, 0, "i", admData[playerid][dGang]);
 				}
 			}
 			else//если удаляемый аккаунт - НЕ лидер банды, то:
 			{
-				if(data2[14] > 0)//если игрок состоял в банде, то:
+				if(admData[playerid][dGang] > 0)//если игрок состоял в банде, то:
 				{
-					format(string,sizeof(string),"gangs/%d.ini",data2[14]);
+					format(string,sizeof(string),"gangs/%d.ini",admData[playerid][dGang]);
 					if(fexist(string))//если файл с ID банды существует, то:
 					{
-						GPlayers[data2[14]]--;//делаем в банде -1 игрок, и сохраняем изменения
-						GangSave(data2[14]);//запись ID банды в файл
-						format(ssss,sizeof(ssss)," *** и изменил число игроков в банде [%s{33CCFF}] на %d (автоматически) .", GName[data2[14]], GPlayers[data2[14]]);
+						GPlayers[admData[playerid][dGang]]--;//делаем в банде -1 игрок, и сохраняем изменения
+						GangSave(admData[playerid][dGang]);//запись ID банды в файл
+						format(ssss,sizeof(ssss)," *** и изменил число игроков в банде [%s{33CCFF}] на %d (автоматически) .", GName[admData[playerid][dGang]], GPlayers[admData[playerid][dGang]]);
 						print(ssss);
 						SendClientMessageToAll(COLOR_LIGHTBLUE, ssss);
 					}
@@ -15720,7 +16192,13 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			if (PlayerInfo[playerid][pAdmin] >= 1)
 			{
 				SendClientMessage(playerid, COLOR_GRAD1, " 1 левел: /time, /weat, /line, /makevip, /banakk, /banakktm, /muteakk, /prisonakk, /plclr, /banlst,");
-				SendClientMessage(playerid, COLOR_GRAD1, "                  /mess, /tadm, /sid, /edgangs, /lchouse, /openpm, /playtp, /a(chat), /cord, /ah(elp)");
+				SendClientMessage(playerid, COLOR_GRAD1, "           /mess, /tadm, /sid, /edgangs, /lchouse, /openpm, /playtp, /a(chat), /cord, /scrnetv,");
+#if (MOD4DINS == 0)
+				SendClientMessage(playerid, COLOR_GRAD1, "           /ah(elp)");
+#endif
+#if (MOD4DINS >= 1)
+				SendClientMessage(playerid, COLOR_GRAD1, "           /cvpass, /ah(elp)");
+#endif
 			}
 			if (PlayerInfo[playerid][pAdmin] >= 2)
 			{
@@ -15729,13 +16207,26 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			if (PlayerInfo[playerid][pAdmin] >= 3)
 			{
 #if (MOD90INS == 0 && MOD77INS == 0)
-				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /unbanakk, /shad, /admtp, /live, /nucexp");
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /unbanakk, /shad, /admtp, /live, /nucexp, /scrnet1, /scrnetnp1, /scrnet2, /scrnetnp2");
 #endif
 #if (MOD90INS == 0 && MOD77INS == 1)
-				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /dataakk, /unbanakk, /shad, /admtp, /live, /nucexp");
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /dataakk, /unbanakk, /shad, /admtp, /live, /nucexp, /scrnet1, /scrnetnp1, /scrnet2,");
+				SendClientMessage(playerid, COLOR_GRAD1, "           /scrnetnp2");
 #endif
-#if (MOD90INS == 1 && MOD77INS == 1)
-				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /dataakk, /unbanakk, /akksrc, /shad, /admtp, /live, /nucexp");
+#if (MOD90INS == 1 && MOD77INS == 0 && MOD7AINS == 0)
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /unbanakk, /shad, /admtp, /live, /nucexp, /scrnet1, /scrnetnp1, /scrnet2, /scrnetnp2");
+#endif
+#if (MOD90INS == 1 && MOD77INS == 1 && MOD7AINS == 0)
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /dataakk, /unbanakk, /akksrc, /shad, /admtp, /live, /nucexp, /scrnet1, /scrnetnp1,");
+				SendClientMessage(playerid, COLOR_GRAD1, "           /scrnet2, /scrnetnp2");
+#endif
+#if (MOD90INS == 1 && MOD77INS == 0 && MOD7AINS == 1)
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /unbanakk, /passrc, /shad, /admtp, /live, /nucexp, /scrnet1, /scrnetnp1, /scrnet2,");
+				SendClientMessage(playerid, COLOR_GRAD1, "           /scrnetnp2");
+#endif
+#if (MOD90INS == 1 && MOD77INS == 1 && MOD7AINS == 1)
+				SendClientMessage(playerid, COLOR_GRAD1, " 3 левел: /grav, /dataakk, /unbanakk, /akksrc, /passrc, /shad, /admtp, /live, /nucexp, /scrnet1,");
+				SendClientMessage(playerid, COLOR_GRAD1, "           /scrnetnp1, /scrnet2, /scrnetnp2");
 #endif
 			}
 			if (PlayerInfo[playerid][pAdmin] >= 4)
@@ -15746,10 +16237,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			if(IsPlayerAdmin(playerid))
 			{
 #if (MOD90INS == 0)
-				SendClientMessage(playerid, COLOR_GRAD1, " RCON-админ: /iadminset, /untouch, /servcon, /openip");
+				SendClientMessage(playerid, COLOR_GRAD1, " RCON-админ: /iadminset, /untouch, /servcon, /openip, /scrnetper");
 #endif
 #if (MOD90INS == 1)
-				SendClientMessage(playerid, COLOR_GRAD1, " RCON-админ: /iadminset, /untouch, /servcon, /openip, /delakktm");
+				SendClientMessage(playerid, COLOR_GRAD1, " RCON-админ: /iadminset, /untouch, /servcon, /openip, /scrnetper, /delakktm");
 #endif
 			}
 		}
@@ -15982,7 +16473,7 @@ public OnPlayerEnterVehicle(playerid, vehicleid, ispassenger)
 	if(Score >= 500000 && Score < 600000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}Игрок{FFFFFF}*\n*Уровень: {00CCFF}6{FFFFFF}.*\n*{00CCFF}Пахан{FFFFFF}*");
 	if(Score >= 600000 && Score < 700000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}7{FFFFFF}.*\n*{00CCFF}Pro Drifter{FFFFFF}*");
 	if(Score >= 700000 && Score < 800000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}8{FFFFFF}.*\n*{00CCFF}VIP{FFFFFF}*");
-	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Гловарь{FFFFFF}*");
+	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Главарь{FFFFFF}*");
 	if(Score >= 900000 ) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}*10*{FFFFFF}.*\n*{00CCFF}Король дрифта{FFFFFF}*");
 	if(scrmod[3][playerid] == 0)
 	{
@@ -16016,7 +16507,7 @@ public OnPlayerExitVehicle(playerid, vehicleid)
 	if(Score >= 500000 && Score < 600000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}Игрок{FFFFFF}*\n*Уровень: {00CCFF}6{FFFFFF}.*\n*{00CCFF}Пахан{FFFFFF}*");
 	if(Score >= 600000 && Score < 700000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}7{FFFFFF}.*\n*{00CCFF}Pro Drifter{FFFFFF}*");
 	if(Score >= 700000 && Score < 800000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}8{FFFFFF}.*\n*{00CCFF}VIP{FFFFFF}*");
-	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Гловарь{FFFFFF}*");
+	if(Score >= 800000 && Score < 900000) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Главарь{FFFFFF}*");
 	if(Score >= 900000 ) format(Playerdr[playerid][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}*10*{FFFFFF}.*\n*{00CCFF}Король дрифта{FFFFFF}*");
 	if(scrmod[3][playerid] == 0)
 	{
@@ -18154,7 +18645,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 				return 1;
 			}
 #endif
-			strmid(PlayerInfo[playerid][pKey], inputtext, 0, strlen(inputtext), 255);
+			strmid(PlayerInfo[playerid][pKey], inputtext, 0, strlen(inputtext), 64);
 			OnPlayerRegister(playerid,PlayerInfo[playerid][pKey]);
 		}
 		return 1;
@@ -18289,10 +18780,17 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 				\n	ванных игроков) - (бан).\
 				\nп1.29 Стрельба по игроку с места пассажира - (предупреждение\
 				\n	- бан).", strdln);
-				format(strdln, sizeof(strdln), "%s\nМеры наказаний в порядке возрастания: 1- предупреждение, 2-\
-				\n	денежный штраф, 3- затык, 4- тюрьма, 5- кик, 6- депорта-\
+				format(strdln, sizeof(strdln), "%s\nп1.30 Мат от игрока (только если у админа включен режим\
+				\n	/keyon) в чате или в командах - (предупреждение - бан).\
+				\nп1.31 Создание другого (других) аккаунтов (мультиакки) после\
+				\n	бана основного аккаунта - (баны всех мультиакков игрока).", strdln);
+				format(strdln, sizeof(strdln), "%s\nп1.32 Завуалированый мат, мат транслит, мат на любом извест-\
+				\n	ном иностранном языке, вульгарное выражение - приравнива-\
+				\n	ются к обычному мату (со всеми вытекающими последствиями).\
+				\nМеры наказаний в порядке возрастания: 1- предупреждение, 2-", strdln);
+				format(strdln, sizeof(strdln), "%s\n	денежный штраф, 3- затык, 4- тюрьма, 5- кик, 6- депорта-\
 				\n	ция, 7- бан (ЗАТЫК* - обязательная мера наказания).", strdln);
-				ShowPlayerDialog(playerid, 102, DIALOG_STYLE_LIST, "Кодекс игроков - ЗАПРЕТЫ (п1.1 - п1.29)", strdln, "OK", "Отмена");
+				ShowPlayerDialog(playerid, 102, DIALOG_STYLE_LIST, "Кодекс игроков - ЗАПРЕТЫ (п1.1 - п1.32)", strdln, "OK", "Отмена");
 				SetPVarInt(playerid, "DlgCont", 102);
 				return 1;
 			}
@@ -18360,81 +18858,84 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 	            \nп3.3 Логин противоположного пола (игрок ''ОН'' - MARUSYA, иг-");
 	 			format(strdln, sizeof(strdln), "%s\n	рок ''ОНА'' - ivan).\
 	            \nп3.4 Название банды порочащие логин админа (логины админов)\
-	            \n	(admlog_durak, admlog-LOL... и.т.п.) - (предупреждение,\
-	            \n	лишение админки).", strdln);
+	            \n	(admlog_durak, admlog-LOL... и.т.п.) - (предупр., лишение\
+	            \n	адм.).", strdln);
 	 			format(strdln, sizeof(strdln), "%s\nп3.5 Название банды случайного вида (G6fc76KK4f7cM6f...\
-	            \n	и.т.п.) - (предупреждение, лишение админки).\
-				\nп3.6 Название банды, имя дома, или номер авто с использова-\
-				\n	нием мата - (лишение админки).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.7 Использование скина противоположного пола - (предупреж-\
-	            \n	дение, лишение админки).\
-	            \nп3.8 Анимация ''поцелуй'' со скином своего пола - (предупреж-\
-	            \n	дение, лишение админки).", strdln);
+	            \n	и.т.п.) - (предупр., лишение адм.).\
+	            \nп3.6 Название банды, имя дома, или номер авто с использова-\
+	            \n	нием мата - (лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.7 Использование скина противоположного пола - (предупр.,\
+	            \n	лишение адм.).\
+	            \nп3.8 Анимация ''поцелуй'' со скином своего пола - (предупр.,\
+	            \n	лишение адм.).", strdln);
 	 			format(strdln, sizeof(strdln), "%s\nп3.9 Игровые читы или моды ЛЮБОГО типа (чит, собейт, CLEO,\
 	            \n	паркур-мод... и.т.п.) дающие превосходство над другими иг-\
-	            \n	роками - (лишение админки + бан).\
+	            \n	роками - (лишение адм. + бан).\
 	            \nп3.10 Моды ЛЮБОГО типа на транспорт, приводящие к неадекват-", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	ному ''поведению'' транспорта - (предупреждение, лишение\
-	            \n	админки).\
+	 			format(strdln, sizeof(strdln), "%s\n	ному ''поведению'' транспорта - (предупр., лишение адм.).\
 	            \nп3.11 Читы, приводящие к остановке сервера или кикам игроков\
-	            \n	- (лишение админки + бан).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.12 Мат в любом из чатов, или в любой из команд сервера,\
-	            \n	или в ''причине'' - (лишение админки).\
+	            \n	- (лишение адм. + бан).\
+	            \nп3.12 Мат в любом из чатов, или в любой из команд сервера,", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	или в ''причине'' - (лишение адм.).\
 	            \nп3.13 Флуд или спам в любом из чатов, или в любой из команд\
-	            \n	сервера - (предупреждение, лишение админки).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.14 Одиночное или групповое оскорбление игрока или админа\
-	            \n	(игроков или админов) в любом из чатов, или в любой из ко-\
-	            \n	манд сервера - (предупреждение, лишение админки).\
-	            \nп3.15 Одиночное или групповое пренебрежительное выделение иг-", strdln);
-				format(strdln, sizeof(strdln), "%s\n	рока или админа (игроков или админов) по географическому,\
-	  			\n	национальному, религиозному или возрастному признаку (ра-\
-	    		\n	сизм, национализм... и.т.п.) в любом из чатов, или в любой\
-	     		\n	из команд сервера - (предупреждение, лишение админки).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.16 МНОГОКРАТНОЕ одиночное или групповое пренебрежительное\
-	            \n	отношение к игроку или админу (игрокам или админам) -\
-	            \n	(предупреждение, лишение админки).\
-	            \nп3.17 МНОГОКРАТНЫЕ необоснованные убийства игрока или админа", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	(игроков или админов) - (предупреждение, лишение админки).\
-	            \nп3.18 МНОГОКРАТНЫЕ кражи транспорта у игрока или админа (иг\
-	            \n	роков или админов) - (предупреждение, лишение админки).\
-	            \nп3.19 Мешание проведению дрифта, гонок или ДМ - (предупрежде-", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	ние, лишение админки).\
-	            \nп3.20 МНОГОКРАТНЫЕ выпрашивания ''повышения'' у гл.админа\
-	            \n	(админов) - (предупреждение, лишение админки).\
-	            \nп3.21 МНОГОКРАТНЫЕ использования или злоупотребления функци-", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	ями админ-меню или командами админа (ТП, изменение погоды\
-	            \n	или гравитации... и.т.п.) - (предупр., лишение адм.).\
+	            \n	сервера - (предупр., лишение адм.).\
+	            \nп3.14 Одиночное или групповое оскорбление игрока или админа", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	(игроков или админов) в любом из чатов, или в любой из ко-\
+	            \n	манд сервера - (предупр., лишение адм.).\
+	            \nп3.15 Одиночное или групповое пренебрежительное выделение иг-\
+	            \n	рока или админа (игроков или админов) по географическому,", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	национальному, религиозному или возрастному признаку (ра-\
+	            \n	сизм, национализм... и.т.п.) в любом из чатов, или в любой\
+	            \n	из команд сервера - (предупр., лишение адм.).\
+	            \nп3.16 МНОГОКРАТНОЕ одиночное или групповое пренебрежительное", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	отношение к игроку или админу (игрокам или админам) -\
+	            \n	(предупр., лишение адм.).\
+	            \nп3.17 МНОГОКРАТНЫЕ необоснованные убийства игрока или админа\
+	            \n	(игроков или админов) - (предупр., лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.18 МНОГОКРАТНЫЕ кражи транспорта у игрока или админа (иг-\
+	            \n	роков или админов) - (предупр., лишение адм.).\
+	            \nп3.19 Мешание проведению дрифта, гонок или ДМ - (предупр.,\
+	            \n	лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.20 МНОГОКРАТНЫЕ выпрашивания ''повышения'' у гл.админа\
+	            \n	(админов) - (предупр., лишение адм.).\
+	            \nп3.21 МНОГОКРАТНЫЕ использования или злоупотребления функци-\
+	            \n	ями админ-меню или командами админа (ТП, изменение погоды", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	или гравитации... и.т.п.) - (предупр., лишение адм.).\
 	            \nп3.22 МНОГОКРАТНОЕ НЕзаполнение полей ''причина'' в админ-ме-\
-	            \n	ню или командах - (предупр., лишение адм.).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.23 МНОГОКРАТНОЕ спонсирование игрока (игроков) крупными\
-	            \n	денежными суммами - (понижение адм. до 1-го уровня, лише-\
+	            \n	ню или командах - (предупр., лишение адм.).\
+	            \nп3.23 МНОГОКРАТНОЕ спонсирование игрока (игроков) крупными", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	денежными суммами - (понижение адм. до 1-го уровня, лише-\
 	            \n	ние адм.).\
-	            \nп3.24 Деноминирование денежных средств, БЕЗ предварительного", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	согласования правил деноминации (см. п4.16) - (предупр.,\
-	            \n	понижение адм. до 1-го уровня, лишение адм.).\
+	            \nп3.24 Деноминирование денежных средств, БЕЗ предварительного\
+	            \n	согласования правил деноминации (см. п4.16) - (предупр.,", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	понижение адм. до 1-го уровня, лишение адм.).\
 	            \nп3.25 Превышение должностных полномочий (тюрьма ни за что,\
-	            \n	бан ни за что... и.т.п.) - (предупр., лишение адм.).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.26 Распространение закрытой информации среди игроков (IP\
-	            \n	игроков или админов, PM-сообщений, админ-чата, координат\
+	            \n	бан ни за что... и.т.п.) - (предупр., лишение адм.).\
+	            \nп3.26 Распространение закрытой информации среди игроков (IP", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	игроков или админов, PM-сообщений, админ-чата, координат\
 	            \n	запрещённых территорий... и.т.п.) - (предупр., лишение\
-	            \n	адм.).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.27 Использование админки ИСКЛЮЧИТЕЛЬНО в личных целях (не\
-	            \n	реагирование на мат в чате, на читеров... и.т.п.) - (пре-\
+	            \n	адм.).\
+	            \nп3.27 Использование админки ИСКЛЮЧИТЕЛЬНО в личных целях (не", strdln);
+	 			format(strdln, sizeof(strdln), "%s\n	реагирование на мат в чате, на читеров... и.т.п.) - (пре-\
 	            \n	дупр., лишение адм.).\
-	            \nп3.28 Неадекватное поведение админа (админ вернулся с дня", strdln);
-	 			format(strdln, sizeof(strdln), "%s\n	рождения, юбилея... и.т.п.) или по причине передачи своего\
-	            \n	аккаунта другому лицу - (лишение адм.).\
-	            \nп3.29 Использование БОЛЕЕ 3-х мер наказания одновременно -\
-	            \n	(предупр., лишение адм.).", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.30 Использование команды /ipban по отношению к другому ад-\
-	            \n	мину (бан другого админа по IP) - (лишение адм.).\
-	            \nп3.31 Передача или продажа своего аккаунта для администриро-\
-	            \n	вания параллельных серверов другому лицу - (лишение адм.)", strdln);
-	 			format(strdln, sizeof(strdln), "%s\nп3.32 Простой пароль на админ-аккаунте (111, 123... и.т.п.)\
-	            \n	- (предупр., лишение адм.).\
-	            \nп3.33 Стрельба по игроку с места пассажира - (предупр., ли-\
-	            \n	шение адм.).", strdln);
-				ShowPlayerDialog(playerid, 104, DIALOG_STYLE_LIST, "Кодекс админов - ЗАПРЕТЫ (п3.1 - п3.33)", strdln, "OK", "Отмена");
+	            \nп3.28 Неадекватное поведение админа (админ вернулся с дня\
+	            \n	рождения, юбилея... и.т.п.) - (лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.29 Использование БОЛЕЕ 3-х мер наказания одновременно -\
+	            \n	(предупр., лишение адм.).\
+	            \nп3.30 Использование команды /ipban по отношению к другому ад-\
+	            \n	мину (бан другого админа по IP) - (лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.31 Передача или продажа своего аккаунта другому лицу -\
+	            \n	(лишение адм.)\
+	            \nп3.32 Простой пароль на админ-аккаунте (111, 123... и.т.п.)\
+	            \n	- (предупр., лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.33 Стрельба по игроку с места пассажира - (предупр., ли-\
+	            \n	шение адм.).\
+	            \nп3.34 Мат от админа (только если у другого админа включен\
+	            \n	режим /keyon) в чате или в командах - (лишение адм.).", strdln);
+	 			format(strdln, sizeof(strdln), "%s\nп3.35 Завуалированый мат, мат транслит, мат на любом извест-\
+	            \n	ном иностранном языке, вульгарные выражения - приравнива-\
+	            \n	ются к обычному мату (со всеми вытекающими последствиями).", strdln);
+				ShowPlayerDialog(playerid, 104, DIALOG_STYLE_LIST, "Кодекс админов - ЗАПРЕТЫ (п3.1 - п3.35)", strdln, "OK", "Отмена");
 				SetPVarInt(playerid, "DlgCont", 104);
 				return 1;
 			}
@@ -18498,12 +18999,12 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			}
 			if(listitem == 2)
 			{
-	 			format(strdln, sizeof(strdln), "п5.1 Контролировать и принимать меры по пунктам п1.1 - п1.29\
+	 			format(strdln, sizeof(strdln), "п5.1 Контролировать и принимать меры по пунктам п1.1 - п1.30\
 	            \n	(по всем, или по отдельной группе пунктов при разделённом\
 	            \n	администрировании).\
 	            \nп5.2 Защищать пункты п2.1 - п2.11.");
 	 			format(strdln, sizeof(strdln), "%s\nп5.3 Контролировать и (по возможности) принимать меры по пун-\
-	            \n	ктам п3.1 - п3.33.\
+	            \n	ктам п3.1 - п3.34.\
 	            \nп5.4 Защищать пункты п4.1 - п4.21.\
 	            \nп5.5 Исполнять пункты п5.1 - п5.4.", strdln);
 				ShowPlayerDialog(playerid, 106, DIALOG_STYLE_LIST, "Кодекс админов - ОБЯЗАННОСТИ (п5.1 - п5.5)", strdln, "OK", "Отмена");
@@ -18597,15 +19098,22 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			\n	ванных игроков) - (бан).\
 			\nп1.29 Стрельба по игроку с места пассажира - (предупреждение\
 			\n	- бан).", strdln);
-			format(strdln, sizeof(strdln), "%s\nМеры наказаний в порядке возрастания: 1- предупреждение, 2-\
-			\n	денежный штраф, 3- затык, 4- тюрьма, 5- кик, 6- депорта-\
+			format(strdln, sizeof(strdln), "%s\nп1.30 Мат от игрока (только если у админа включен режим\
+			\n	/keyon) в чате или в командах - (предупреждение - бан).\
+			\nп1.31 Создание другого (других) аккаунтов (мультиакки) после\
+			\n	бана основного аккаунта - (баны всех мультиакков игрока).", strdln);
+			format(strdln, sizeof(strdln), "%s\nп1.32 Завуалированый мат, мат транслит, мат на любом извест-\
+			\n	ном иностранном языке, вульгарное выражение - приравнива-\
+			\n	ются к обычному мату (со всеми вытекающими последствиями).\
+			\nМеры наказаний в порядке возрастания: 1- предупреждение, 2-", strdln);
+			format(strdln, sizeof(strdln), "%s\n	денежный штраф, 3- затык, 4- тюрьма, 5- кик, 6- депорта-\
 			\n	ция, 7- бан (ЗАТЫК* - обязательная мера наказания).", strdln);
-			ShowPlayerDialog(playerid, 102, DIALOG_STYLE_LIST, "Кодекс игроков - ЗАПРЕТЫ (п1.1 - п1.29)", strdln, "OK", "Отмена");
+			ShowPlayerDialog(playerid, 102, DIALOG_STYLE_LIST, "Кодекс игроков - ЗАПРЕТЫ (п1.1 - п1.32)", strdln, "OK", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 102);
 		}
 		else
 		{
-			ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.29)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
+			ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.32)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 100);
 		}
 		return 1;
@@ -18652,7 +19160,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		}
 		else
 		{
-			ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.29)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
+			ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.32)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 100);
 		}
 		return 1;
@@ -18667,92 +19175,95 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		SetPVarInt(playerid, "DlgCont", -600);//не существующий ИД диалога
         if(response)
 		{
-	 		format(strdln, sizeof(strdln), "п3.1 Логин случайного вида (G6fc76KK4f7cM6f... и.т.п.).\
-	        \nп3.2 Логин состоящий из ''телефонного номера''\
-	        \n	(6534376197648, ab867439... и.т.п.).\
-	        \nп3.3 Логин противоположного пола (игрок ''ОН'' - MARUSYA, иг-");
-	 		format(strdln, sizeof(strdln), "%s\n	рок ''ОНА'' - ivan).\
-	        \nп3.4 Название банды порочащие логин админа (логины админов)\
-	        \n	(admlog_durak, admlog-LOL... и.т.п.) - (предупреждение,\
-	        \n	лишение админки).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.5 Название банды случайного вида (G6fc76KK4f7cM6f...\
-	        \n	и.т.п.) - (предупреждение, лишение админки).\
-			\nп3.6 Название банды, имя дома, или номер авто с использова-\
-			\n	нием мата - (лишение админки).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.7 Использование скина противоположного пола - (предупреж-\
-	        \n	дение, лишение админки).\
-	        \nп3.8 Анимация ''поцелуй'' со скином своего пола - (предупреж-\
-	        \n	дение, лишение админки).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.9 Игровые читы или моды ЛЮБОГО типа (чит, собейт, CLEO,\
-	        \n	паркур-мод... и.т.п.) дающие превосходство над другими иг-\
-	        \n	роками - (лишение админки + бан).\
-	        \nп3.10 Моды ЛЮБОГО типа на транспорт, приводящие к неадекват-", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	ному ''поведению'' транспорта - (предупреждение, лишение\
-	        \n	админки).\
-	        \nп3.11 Читы, приводящие к остановке сервера или кикам игроков\
-	        \n	- (лишение админки + бан).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.12 Мат в любом из чатов, или в любой из команд сервера,\
-	        \n	или в ''причине'' - (лишение админки).\
-	        \nп3.13 Флуд или спам в любом из чатов, или в любой из команд\
-	        \n	сервера - (предупреждение, лишение админки).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.14 Одиночное или групповое оскорбление игрока или админа\
-	        \n	(игроков или админов) в любом из чатов, или в любой из ко-\
-	        \n	манд сервера - (предупреждение, лишение админки).\
-	        \nп3.15 Одиночное или групповое пренебрежительное выделение иг-", strdln);
-			format(strdln, sizeof(strdln), "%s\n	рока или админа (игроков или админов) по географическому,\
-	  		\n	национальному, религиозному или возрастному признаку (ра-\
-	    	\n	сизм, национализм... и.т.п.) в любом из чатов, или в любой\
-	     	\n	из команд сервера - (предупреждение, лишение админки).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.16 МНОГОКРАТНОЕ одиночное или групповое пренебрежительное\
-	        \n	отношение к игроку или админу (игрокам или админам) -\
-	        \n	(предупреждение, лишение админки).\
-	        \nп3.17 МНОГОКРАТНЫЕ необоснованные убийства игрока или админа", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	(игроков или админов) - (предупреждение, лишение админки).\
-	        \nп3.18 МНОГОКРАТНЫЕ кражи транспорта у игрока или админа (иг\
-	        \n	роков или админов) - (предупреждение, лишение админки).\
-	        \nп3.19 Мешание проведению дрифта, гонок или ДМ - (предупрежде-", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	ние, лишение админки).\
-	        \nп3.20 МНОГОКРАТНЫЕ выпрашивания ''повышения'' у гл.админа\
-	        \n	(админов) - (предупреждение, лишение админки).\
-	        \nп3.21 МНОГОКРАТНЫЕ использования или злоупотребления функци-", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	ями админ-меню или командами админа (ТП, изменение погоды\
-	        \n	или гравитации... и.т.п.) - (предупр., лишение адм.).\
-	        \nп3.22 МНОГОКРАТНОЕ НЕзаполнение полей ''причина'' в админ-ме-\
-	        \n	ню или командах - (предупр., лишение адм.).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.23 МНОГОКРАТНОЕ спонсирование игрока (игроков) крупными\
-	        \n	денежными суммами - (понижение адм. до 1-го уровня, лише-\
-	        \n	ние адм.).\
-	        \nп3.24 Деноминирование денежных средств, БЕЗ предварительного", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	согласования правил деноминации (см. п4.16) - (предупр.,\
-	        \n	понижение адм. до 1-го уровня, лишение адм.).\
-	        \nп3.25 Превышение должностных полномочий (тюрьма ни за что,\
-	        \n	бан ни за что... и.т.п.) - (предупр., лишение адм.).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.26 Распространение закрытой информации среди игроков (IP\
-	        \n	игроков или админов, PM-сообщений, админ-чата, координат\
-	        \n	запрещённых территорий... и.т.п.) - (предупр., лишение\
-	        \n	адм.).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.27 Использование админки ИСКЛЮЧИТЕЛЬНО в личных целях (не\
-	        \n	реагирование на мат в чате, на читеров... и.т.п.) - (пре-\
-	        \n	дупр., лишение адм.).\
-	        \nп3.28 Неадекватное поведение админа (админ вернулся с дня", strdln);
-	 		format(strdln, sizeof(strdln), "%s\n	рождения, юбилея... и.т.п.) или по причине передачи своего\
-	        \n	аккаунта другому лицу - (лишение адм.).\
-	        \nп3.29 Использование БОЛЕЕ 3-х мер наказания одновременно -\
-	        \n	(предупр., лишение адм.).", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.30 Использование команды /ipban по отношению к другому ад-\
-	        \n	мину (бан другого админа по IP) - (лишение адм.).\
-	        \nп3.31 Передача или продажа своего аккаунта для администриро-\
-	        \n	вания параллельных серверов другому лицу - (лишение адм.)", strdln);
-	 		format(strdln, sizeof(strdln), "%s\nп3.32 Простой пароль на админ-аккаунте (111, 123... и.т.п.)\
-	        \n	- (предупр., лишение адм.).\
-	        \nп3.33 Стрельба по игроку с места пассажира - (предупр., ли-\
-	        \n	шение адм.).", strdln);
-			ShowPlayerDialog(playerid, 104, DIALOG_STYLE_LIST, "Кодекс админов - ЗАПРЕТЫ (п3.1 - п3.33)", strdln, "OK", "Отмена");
+ 			format(strdln, sizeof(strdln), "п3.1 Логин случайного вида (G6fc76KK4f7cM6f... и.т.п.).\
+            \nп3.2 Логин состоящий из ''телефонного номера''\
+            \n	(6534376197648, ab867439... и.т.п.).\
+            \nп3.3 Логин противоположного пола (игрок ''ОН'' - MARUSYA, иг-");
+ 			format(strdln, sizeof(strdln), "%s\n	рок ''ОНА'' - ivan).\
+            \nп3.4 Название банды порочащие логин админа (логины админов)\
+            \n	(admlog_durak, admlog-LOL... и.т.п.) - (предупр., лишение\
+            \n	адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.5 Название банды случайного вида (G6fc76KK4f7cM6f...\
+            \n	и.т.п.) - (предупр., лишение адм.).\
+            \nп3.6 Название банды, имя дома, или номер авто с использова-\
+            \n	нием мата - (лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.7 Использование скина противоположного пола - (предупр.,\
+            \n	лишение адм.).\
+            \nп3.8 Анимация ''поцелуй'' со скином своего пола - (предупр.,\
+            \n	лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.9 Игровые читы или моды ЛЮБОГО типа (чит, собейт, CLEO,\
+            \n	паркур-мод... и.т.п.) дающие превосходство над другими иг-\
+            \n	роками - (лишение адм. + бан).\
+            \nп3.10 Моды ЛЮБОГО типа на транспорт, приводящие к неадекват-", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	ному ''поведению'' транспорта - (предупр., лишение адм.).\
+            \nп3.11 Читы, приводящие к остановке сервера или кикам игроков\
+            \n	- (лишение адм. + бан).\
+            \nп3.12 Мат в любом из чатов, или в любой из команд сервера,", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	или в ''причине'' - (лишение адм.).\
+            \nп3.13 Флуд или спам в любом из чатов, или в любой из команд\
+            \n	сервера - (предупр., лишение адм.).\
+            \nп3.14 Одиночное или групповое оскорбление игрока или админа", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	(игроков или админов) в любом из чатов, или в любой из ко-\
+            \n	манд сервера - (предупр., лишение адм.).\
+            \nп3.15 Одиночное или групповое пренебрежительное выделение иг-\
+            \n	рока или админа (игроков или админов) по географическому,", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	национальному, религиозному или возрастному признаку (ра-\
+            \n	сизм, национализм... и.т.п.) в любом из чатов, или в любой\
+            \n	из команд сервера - (предупр., лишение адм.).\
+            \nп3.16 МНОГОКРАТНОЕ одиночное или групповое пренебрежительное", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	отношение к игроку или админу (игрокам или админам) -\
+            \n	(предупр., лишение адм.).\
+            \nп3.17 МНОГОКРАТНЫЕ необоснованные убийства игрока или админа\
+            \n	(игроков или админов) - (предупр., лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.18 МНОГОКРАТНЫЕ кражи транспорта у игрока или админа (иг-\
+            \n	роков или админов) - (предупр., лишение адм.).\
+            \nп3.19 Мешание проведению дрифта, гонок или ДМ - (предупр.,\
+            \n	лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.20 МНОГОКРАТНЫЕ выпрашивания ''повышения'' у гл.админа\
+            \n	(админов) - (предупр., лишение адм.).\
+            \nп3.21 МНОГОКРАТНЫЕ использования или злоупотребления функци-\
+            \n	ями админ-меню или командами админа (ТП, изменение погоды", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	или гравитации... и.т.п.) - (предупр., лишение адм.).\
+            \nп3.22 МНОГОКРАТНОЕ НЕзаполнение полей ''причина'' в админ-ме-\
+            \n	ню или командах - (предупр., лишение адм.).\
+            \nп3.23 МНОГОКРАТНОЕ спонсирование игрока (игроков) крупными", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	денежными суммами - (понижение адм. до 1-го уровня, лише-\
+            \n	ние адм.).\
+            \nп3.24 Деноминирование денежных средств, БЕЗ предварительного\
+            \n	согласования правил деноминации (см. п4.16) - (предупр.,", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	понижение адм. до 1-го уровня, лишение адм.).\
+            \nп3.25 Превышение должностных полномочий (тюрьма ни за что,\
+            \n	бан ни за что... и.т.п.) - (предупр., лишение адм.).\
+            \nп3.26 Распространение закрытой информации среди игроков (IP", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	игроков или админов, PM-сообщений, админ-чата, координат\
+            \n	запрещённых территорий... и.т.п.) - (предупр., лишение\
+            \n	адм.).\
+            \nп3.27 Использование админки ИСКЛЮЧИТЕЛЬНО в личных целях (не", strdln);
+ 			format(strdln, sizeof(strdln), "%s\n	реагирование на мат в чате, на читеров... и.т.п.) - (пре-\
+            \n	дупр., лишение адм.).\
+            \nп3.28 Неадекватное поведение админа (админ вернулся с дня\
+            \n	рождения, юбилея... и.т.п.) - (лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.29 Использование БОЛЕЕ 3-х мер наказания одновременно -\
+            \n	(предупр., лишение адм.).\
+            \nп3.30 Использование команды /ipban по отношению к другому ад-\
+            \n	мину (бан другого админа по IP) - (лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.31 Передача или продажа своего аккаунта другому лицу -\
+            \n	(лишение адм.)\
+            \nп3.32 Простой пароль на админ-аккаунте (111, 123... и.т.п.)\
+            \n	- (предупр., лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.33 Стрельба по игроку с места пассажира - (предупр., ли-\
+            \n	шение адм.).\
+            \nп3.34 Мат от админа (только если у другого админа включен\
+            \n	режим /keyon) в чате или в командах - (лишение адм.).", strdln);
+ 			format(strdln, sizeof(strdln), "%s\nп3.35 Завуалированый мат, мат транслит, мат на любом извест-\
+            \n	ном иностранном языке, вульгарные выражения - приравнива-\
+            \n	ются к обычному мату (со всеми вытекающими последствиями).", strdln);
+			ShowPlayerDialog(playerid, 104, DIALOG_STYLE_LIST, "Кодекс админов - ЗАПРЕТЫ (п3.1 - п3.35)", strdln, "OK", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 104);
 		}
 		else
 		{
-			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.33)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
+			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.35)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 101);
 		}
 		return 1;
@@ -18824,7 +19335,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		}
 		else
 		{
-			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.33)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
+			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.35)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 101);
 		}
 		return 1;
@@ -18839,12 +19350,12 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		SetPVarInt(playerid, "DlgCont", -600);//не существующий ИД диалога
         if(response)
 		{
- 			format(strdln, sizeof(strdln), "п5.1 Контролировать и принимать меры по пунктам п1.1 - п1.29\
+ 			format(strdln, sizeof(strdln), "п5.1 Контролировать и принимать меры по пунктам п1.1 - п1.30\
             \n	(по всем, или по отдельной группе пунктов при разделённом\
             \n	администрировании).\
             \nп5.2 Защищать пункты п2.1 - п2.11.");
  			format(strdln, sizeof(strdln), "%s\nп5.3 Контролировать и (по возможности) принимать меры по пун-\
-            \n	ктам п3.1 - п3.33.\
+            \n	ктам п3.1 - п3.34.\
             \nп5.4 Защищать пункты п4.1 - п4.21.\
             \nп5.5 Исполнять пункты п5.1 - п5.4.", strdln);
 			ShowPlayerDialog(playerid, 106, DIALOG_STYLE_LIST, "Кодекс админов - ОБЯЗАННОСТИ (п5.1 - п5.5)", strdln, "OK", "Отмена");
@@ -18852,7 +19363,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		}
 		else
 		{
-			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.33)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
+			ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.35)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
 			SetPVarInt(playerid, "DlgCont", 101);
 		}
 		return 1;
@@ -19040,13 +19551,13 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 #if (MOD44INS == 1)
 			if(listitem == 6)
 			{
-				ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.29)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
+				ShowPlayerDialog(playerid, 100, DIALOG_STYLE_LIST, "Кодекс игроков", "Запреты (п1.1 - п1.32)\nПрава (п2.1 - п2.11)", "Выбор", "Отмена");
 				SetPVarInt(playerid, "DlgCont", 100);
 				return 1;
 			}
 			if(listitem == 7)
 			{
-				ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.33)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
+				ShowPlayerDialog(playerid, 101, DIALOG_STYLE_LIST, "Кодекс админов", "Запреты (п3.1 - п3.35)\nПрава (п4.1 - п4.21)\nОбязанности (п5.1 - п5.5)", "Выбор", "Отмена");
 				SetPVarInt(playerid, "DlgCont", 101);
 				return 1;
 			}
@@ -20509,7 +21020,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 					SetPVarInt(playerid, "DlgCont", 2);
 					return 1;
 				}
-				new ip[126];
+				new ip[128];
 				GetPlayerIp(player[playerid], ip, sizeof(ip));
 				format(string,256," *** Админ %s просмотрел IP игрока %s [%d]: %s",RealName[playerid],RealName[player[playerid]],player[playerid],ip);
 				print(string);
@@ -20802,7 +21313,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 				SetTimerEx("PlayBanTimer", 20000, 0, "ii", PlayerInfo[playerid][pAdmin], player[playerid]);
 				return 1;
 			}
-			new ip[126];
+			new ip[128];
 			GetPlayerIp(player[playerid], ip, sizeof(ip));
 			format(string, 256, " *** Админ %s забанил игрока %s , причина: %s", RealName[playerid], RealName[player[playerid]], inputtext);
 			print(string);
@@ -20923,7 +21434,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 				SetTimerEx("TMPlayBanTimer", 20000, 0, "iii", PlayerInfo[playerid][pAdmin], player[playerid], csut);
 				return 1;
 			}
-			new ip[126];
+			new ip[128];
 			GetPlayerIp(player[playerid], ip, sizeof(ip));
 			format(string, 256, " *** Админ %s забанил игрока %s на %d суток , причина: %s", RealName[playerid], RealName[player[playerid]], csut, cause);
 			print(string);
@@ -23328,17 +23839,18 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 #if (MOD90INS == 0)
 			format(soob22,sizeof(soob22),"В первом ключе указан уровень админа, во втором ключе\
 			\nуказано как админ получил админку:\n   1 - с помошью команд   /iadminset   или   /untouch\
-			\n   2 - с помощью команды   /makeadmin  \n   3 - с помощью команды   /admakk\
-			\n   4 - с помощью обычного логирования\n        (аккаунт админа был перенесён на данный сервер)\
-			\n   5 - после дисконнекта (админ очистил\n        свой слот регистрации, но остался админом)\n");
+			\n   2 - с помощью команды   /makeadmin\n   3 - с помощью команды   /admakk\
+			\n   4 - с помощью обычного логирования\n        (аккаунт админа был перенесён на данный сервер)");
 #endif
 #if (MOD90INS == 1)
 			format(soob22,sizeof(soob22),"В первом ключе указан уровень админа, во втором ключе\
 			\nуказано как админ получил админку:\n   1 - с помошью команд   /iadminset   или   /untouch\
-			\n   2 - с помощью команды   /makeadmin  \n   3 - с помощью команды   /admakk\
-			\n   4 - с помощью обычного логирования\n        (аккаунт админа был изменён в базе данных сервера)\
-			\n   5 - после дисконнекта (админ очистил\n        свой слот регистрации, но остался админом)\n");
+			\n   2 - с помощью команды   /makeadmin\n   3 - с помощью команды   /admakk\
+			\n   4 - с помощью обычного логирования\n        (аккаунт админа был изменён в базе данных сервера)");
 #endif
+			format(soob22,sizeof(soob22),"%s\n   5 - после дисконнекта (админ очистил\
+			\n        свой слот регистрации, но остался админом)\
+			\n   6 - с помощью импортирования данных\n   7 - после удаления аккаунта админа командой   /delakk\n",soob22);
 			new dopper, locstr[64];//объявляем дополнительные переменные
 			dopper = LogAdmcnt[playerid] + 20;//записываем в переменную dopper число отображаемых слотов +20
 			strdel(soob, 0, 2048);//очищаем длинную строку окна-сообщения
@@ -26635,7 +27147,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			print(string);
 			format(string, 256, " Вы сменили свой пароль на (%s)", inputtext);
 			SendClientMessage(playerid, COLOR_GREEN, string);
-			strmid(PlayerInfo[playerid][pKey], inputtext, 0, strlen(inputtext), 255);
+			strmid(PlayerInfo[playerid][pKey], inputtext, 0, strlen(inputtext), 64);
 		}else{
 		ShowPlayerDialog(playerid, 12, DIALOG_STYLE_LIST, "Действия", "Пополнить жизнь и броню\nАнимации\nСменить цвет ника\
 		\nСменить скин\nСменить время\nСменить пароль\nСменить стиль боя\nСамоубийство\nПросмотреть собственную статистику", "Выбор", "Отмена");
@@ -29924,7 +30436,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			new per99;//вычисление даты окончания срока без права перекупки
 			per99 = ProcUnban(BUS_DAY);
 			busidplay[playIDbus[playerid]] = playerid;//даём бизнесу ИД он-лайн игрока - владельца бизнеса
-			busmoney[playIDbus[playerid]] = 0;//обнуляем счётчик минут бизнеса
+			busmoney[playIDbus[playerid]] = busminute[playIDbus[playerid]];//копируем в счётчик минут бизнеса - минуты бизнеса
 			busday[playIDbus[playerid]] = per99;//изменение даты окончания срока без права перекупки
 			new file, f[256];//записываем изменения в файл
 			format(f, 256, "bussystem/%i.ini", playIDbus[playerid]);
@@ -29933,6 +30445,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			{
 		    	ini_setString(file, "PlayName", busplayname[playIDbus[playerid]]);
 		    	ini_setInteger(file, "Day", busday[playIDbus[playerid]]);
+		    	ini_setInteger(file, "Count", busmoney[playIDbus[playerid]]);
 				ini_closeFile(file);
 			}
 			CallRemoteFunction("GPSrfun", "iiisifff", 2, 1, playIDbus[playerid], busplayname[playIDbus[playerid]],
@@ -29965,7 +30478,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			para1 = GetPVarInt(playerid, "PlMon");
 			SetPVarInt(playerid, "PlMon", GetPVarInt(playerid, "PlMon") + buscost[playIDbus[playerid]]);//возврат денег игроку
 			busidplay[playIDbus[playerid]] = -600;//даём бизнесу несуществующий ИД игрока
-			busmoney[playIDbus[playerid]] = 0;//обнуляем счётчик минут бизнеса
+			busmoney[playIDbus[playerid]] = busminute[playIDbus[playerid]];//копируем в счётчик минут бизнеса - минуты бизнеса
 			strdel(busplayname[playIDbus[playerid]], 0, MAX_PLAYER_NAME);//изменение имени владельца бизнеса
 			strcat(busplayname[playIDbus[playerid]], "*** INV_PL_ID");
 			if(busday[playIDbus[playerid]] != 0)//если бизнес без права его перекупки, то:
@@ -29981,6 +30494,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			{
 		    	ini_setString(file, "PlayName", busplayname[playIDbus[playerid]]);
 		    	ini_setInteger(file, "Day", busday[playIDbus[playerid]]);
+		    	ini_setInteger(file, "Count", busmoney[playIDbus[playerid]]);
 				ini_closeFile(file);
 			}
 			CallRemoteFunction("GPSrfun", "iiisifff", 2, 1, playIDbus[playerid], busplayname[playIDbus[playerid]],
@@ -30194,7 +30708,7 @@ dcmd_createhouse(playerid, params[])
     return 1;
 }
 //==============================================================================
-// просмотр пароля дома.
+// просмотреть пароль дома по ID.
 //==============================================================================
 dcmd_passhouse(playerid, params[])
 {
@@ -30233,8 +30747,7 @@ dcmd_passhouse(playerid, params[])
 			format(string, sizeof(string), "Дом ID %d  {FFFFFF}заблокирован !", h);
 			SendClientMessage(playerid, 0xFFFF00FF, string);
 		}
-		format(string, sizeof(string), " *** Админ %s [%d] просмотрел пароль дома ID %d .", RealName[playerid], playerid, h);
-		print(string);
+		printf("[GarHouse] Админ %s [%d] просмотрел пароль дома ID %d .", RealName[playerid], playerid, h);
 	}
 	else
 	{
@@ -30243,7 +30756,7 @@ dcmd_passhouse(playerid, params[])
     return 1;
 }
 //==============================================================================
-// перезагрузка системы домов.
+// перезагрузить систему домов.
 //==============================================================================
 dcmd_relhouses(playerid, params[])
 {
@@ -30252,8 +30765,8 @@ dcmd_relhouses(playerid, params[])
 	{
 		new string[256];
 		format(string, sizeof(string), " *** Админ %s [%d] начал перезагрузку системы домов.", RealName[playerid], playerid);
-		print(string);
 		SendClientMessageToAll(0xAA3333AA, string);
+		printf("[GarHouse] Админ %s [%d] начал перезагрузку системы домов.", RealName[playerid], playerid);
 		SetTimerEx("relhoyses1", 1000, 0, "i", playerid);
 	}
 	else
@@ -30272,7 +30785,7 @@ public relhoyses1(playerid)
  		{
   			tmp = GetPVarInt(i, "LastHouseCP");
 			format(file, sizeof(file), FILEPATH, tmp);
-  			if(!strcmp(GetHouseOwner(tmp), RealName[playerid], CASE_SENSETIVE) && GetPVarInt(i, "IsInHouse") == 1 && dini_Exists(file))
+  			if(!strcmp(GetHouseOwner(tmp), RealName[i], CASE_SENSETIVE) && GetPVarInt(i, "IsInHouse") == 1 && dini_Exists(file))
 			{
   				dini_IntSet(file, "QuitInHouse", 1);
 	    		#if defined GH_HOUSECARS
@@ -30307,21 +30820,14 @@ public relhoyses2(playerid)
 forward relhoyses3(playerid);
 public relhoyses3(playerid)
 {
-	for(new i = 0; i < MAX_PLAYERS; i++)
-	{
-		if(IsPlayerConnected(i))
-		{
-			TogglePlayerControllable(i, 1);//разморозить всех игроков
-		}
-	}
 	new string[256];
 	format(string, sizeof(string), " *** Админ %s [%d] перезагрузил систему домов.", RealName[playerid], playerid);
-	print(string);
 	SendClientMessageToAll(0xAA3333AA, string);
+	printf("[GarHouse] Админ %s [%d] перезагрузил систему домов.", RealName[playerid], playerid);
     return 1;
 }
 //==============================================================================
-// блокировка дома по его ИД.
+// заблокировать дом по ID.
 //==============================================================================
 dcmd_lchouse(playerid, params[])
 {
@@ -30339,13 +30845,87 @@ dcmd_lchouse(playerid, params[])
 		if(!dini_Exists(file)) return SendClientMessage(playerid, 0xAA3333AA, " Дома с таким ID не существует !");
 		if(!strcmp(dini_Get(file, "HouseOwner"), INVALID_HOWNER_NAME, CASE_SENSETIVE)) return SendClientMessage(playerid, 0xAA3333AA, " Нельзя ! Дом свободен !");
 		if(!strcmp(dini_Get(file, "HouseOwner"), "* Дом заблокирован", CASE_SENSETIVE)) return SendClientMessage(playerid, 0xAA3333AA, " Дом уже заблокирован !");
+		new locdata11, Float:locdata22[3];
+		locdata22[0] = dini_Float(file, "CPOutX");
+		locdata22[1] = dini_Float(file, "CPOutY");
+		locdata22[2] = dini_Float(file, "CPOutZ");
+		locdata11 = dini_Int(file, "SpawnWorld");
 		dini_Set(file, "HouseOwner", "* Дом заблокирован");
 		dini_Set(file, "HouseName", "* Дом заблокирован");
 		UpdateHouseText(h);
+		CallRemoteFunction("GPSrfun", "iiisifff", 1, 1, h, "*** INV_PL_ID", locdata11, locdata22[0], locdata22[1], locdata22[2]);
 		new string[256];
 		format(string, sizeof(string), " *** Админ %s [%d] заблокировал дом ID %d .", RealName[playerid], playerid, h);
-		print(string);
 		SendAdminMessage(0xAA3333AA, string);
+		printf("[GarHouse] Админ %s [%d] заблокировал дом ID %d .", RealName[playerid], playerid, h);
+	}
+	else
+	{
+		SendClientMessage(playerid, 0xAA3333AA, " У Вас нет прав на использование этой команды !");
+	}
+    return 1;
+}
+//==============================================================================
+// вернуть дом по ID на продажу.
+//==============================================================================
+dcmd_rethouse(playerid, params[])
+{
+	if(IsPlayerAdmin(playerid))
+	{
+		new file[HOUSEFILE_LENGTH], h, sum;
+		if(sscanf(params, "dd", h, sum))
+		{
+			SendClientMessage(playerid, 0xBFC0C2FF, " Используйте: /rethouse [ид дома] [стоимость дома]");
+			return 1;
+		}
+    	format(file, sizeof(file), FILEPATH, h);
+		if(!dini_Exists(file)) return SendClientMessage(playerid, 0xAA3333AA, " Дома с таким ID не существует !");
+		if(!strcmp(dini_Get(file, "HouseOwner"), INVALID_HOWNER_NAME, CASE_SENSETIVE)) return SendClientMessage(playerid, 0xAA3333AA, " Нельзя ! Дом свободен !");
+		if(sum < 500000 || sum > 25000000) return SendClientMessage(playerid, 0xAA3333AA, " Стоимость должна быть между 500,000 $ и 25,000,000 $ !");
+		new locstr11[256], locstr22[256], locdata11[4], Float:locdata22[7];
+		locdata22[0] = dini_Float(file, "CPOutX");
+		locdata22[1] = dini_Float(file, "CPOutY");
+		locdata22[2] = dini_Float(file, "CPOutZ");
+		locstr11 = dini_Get(file, "HouseCreator");
+		locdata22[3] = dini_Float(file, "SpawnOutX");
+		locdata22[4] = dini_Float(file, "SpawnOutY");
+		locdata22[5] = dini_Float(file, "SpawnOutZ");
+		locdata22[6] = dini_Float(file, "SpawnOutAngle");
+		locdata11[0] = dini_Int(file, "SpawnWorld");
+		locdata11[1] = dini_Int(file, "SpawnInterior");
+		locdata11[2] = dini_Int(file, "HouseInterior");
+		locdata11[3] = dini_Int(file, "HouseInteriorValue");
+		locstr22 = dini_Get(file, "HouseInteriorName");
+		dini_Remove(file);
+	    dini_Create(file);
+		dini_FloatSet(file, "CPOutX", locdata22[0]);
+		dini_FloatSet(file, "CPOutY", locdata22[1]);
+		dini_FloatSet(file, "CPOutZ", locdata22[2]);
+		dini_Set(file, "HouseName", "Свободен");
+		dini_Set(file, "HouseOwner", "*** INV_PL_ID");
+		dini_Set(file, "HousePassword", "INVALID_HOUSE_PASSWORD");
+		dini_Set(file, "HouseCreator", locstr11);
+		dini_IntSet(file, "HouseValue", sum);
+		dini_IntSet(file, "HouseStorage", 0);
+		dini_FloatSet(file, "SpawnOutX", locdata22[3]);
+		dini_FloatSet(file, "SpawnOutY", locdata22[4]);
+		dini_FloatSet(file, "SpawnOutZ", locdata22[5]);
+		dini_FloatSet(file, "SpawnOutAngle", locdata22[6]);
+		dini_IntSet(file, "SpawnWorld", locdata11[0]);
+		dini_IntSet(file, "SpawnInterior", locdata11[1]);
+		dini_IntSet(file, "HouseInterior", locdata11[2]);
+		dini_IntSet(file, "HouseInteriorValue", locdata11[3]);
+		dini_Set(file, "HouseInteriorName", locstr22);
+		#if defined GH_USE_MAPICONS
+			DestroyDynamicMapIcon(HouseMIcon[h]);
+			HouseMIcon[h] = CreateDynamicMapIcon(locdata22[0], locdata22[1], locdata22[2], 31, -1, locdata11[0], dini_Int(file, "SpawnInterior"), -1, MICON_VD);
+		#endif
+		UpdateHouseText(h);
+		CallRemoteFunction("GPSrfun", "iiisifff", 1, 1, h, "*** INV_PL_ID", locdata11[0], locdata22[0], locdata22[1], locdata22[2]);
+		new string[256];
+		format(string, sizeof(string), " *** Админ %s [%d] вернул дом ID %d на продажу за %d $ .", RealName[playerid], playerid, h, sum);
+		SendAdminMessage(0xFFFF00AA, string);
+		printf("[GarHouse] Админ %s [%d] вернул дом ID %d на продажу за %d $ .", RealName[playerid], playerid, h, sum);
 	}
 	else
 	{
@@ -30790,7 +31370,7 @@ dcmd_ghcmds(playerid, params[])
 	if(!IsPlayerAdmin(playerid)) return 0;
 	else
 	{
-		ShowPlayerDialog(playerid, 520, DIALOG_STYLE_MSGBOX, "Команды", "/removeallhouses\n/changeallprices\n/sellallhouses\n/createhouse\n/removehouse\n/changeprice\n/sellhouse\n/gotohouse\n/passhouse\n/relhouses\n/lchouse\n/housemenu\n/ghcmds", "Закрыть", "Закрыть");
+		ShowPlayerDialog(playerid, 520, DIALOG_STYLE_MSGBOX, "Команды", "/removeallhouses\n/changeallprices\n/sellallhouses\n/createhouse\n/removehouse\n/changeprice\n/sellhouse\n/gotohouse\n/passhouse\n/relhouses\n/lchouse\n/rethouse\n/housemenu\n/ghcmds", "Закрыть", "Закрыть");
 		SetPVarInt(playerid, "DlgCont", 520);
 	    return 1;
     }
@@ -31538,32 +32118,10 @@ public SaveGangOff22(gangid)
 	return true;
 }
 
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-forward LoadGangAcc(playerid);
-public LoadGangAcc(playerid)
-{
-    new f[256];
-    format(f, 256, "gangs/players/%s.ini", RealName[playerid]);
-	if(fexist(f))
-	{
-		new file = ini_openFile(f);
-		if(file >= 0)
-		{
-		    ini_getInteger(file, "Gang", PGang[playerid]);
-		    ini_getInteger(file, "GangLvl", GangLvl[playerid]);
-			ini_closeFile(file);
-		}
-		fremove(f);
-	}
-	return true;
-}
-//---------------------------------- конец -------------------------------------
-
 forward GangLoad();
 public GangLoad()
 {
-//эти строки оставлены для совместимости с ранней версией мода !!!
+//корректировка ошибок в названии и цвете банды
 //--------------------------------- начало -------------------------------------
 	new dopper;
 	new dopper22;
@@ -31572,57 +32130,6 @@ public GangLoad()
     new file, f[256];
 	for(new i=1; i<(MAX_GANGS - 1); i++)
 	{
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-	    format(f, 256, "gangs/idgn/%i.ini", i);
-		file = ini_openFile(f);
-		if(file >= 0)
-		{
-		    ini_getString(file, "Gang TDReg", GTDReg[i]);
-		    ini_getString(file, "Gang head", GHead[i]);
-		    ini_getString(file, "Gang name", GName[i]);
-		    ini_getString(file, "Gang color", GColor[i]);
-		    ini_getFloat(file, "SpawnX", GSpawnX[i]);
-		    ini_getFloat(file, "SpawnY", GSpawnY[i]);
-		    ini_getFloat(file, "SpawnZ", GSpawnZ[i]);
-		    ini_getInteger(file, "GInter", GInter[i]);
-		    ini_getInteger(file, "GWorld", GWorld[i]);
-		    ini_getInteger(file, "Skin1", GSkin[i][0]);
-		    ini_getInteger(file, "Skin2", GSkin[i][1]);
-		    ini_getInteger(file, "Skin3", GSkin[i][2]);
-		    ini_getInteger(file, "Skin4", GSkin[i][3]);
-		    ini_getInteger(file, "Skin5", GSkin[i][4]);
-		    ini_getInteger(file, "Skin6", GSkin[i][5]);
-		    ini_getInteger(file, "Players", GPlayers[i]);
-			ini_closeFile(file);
-		}
-		if(fexist(f))
-		{
-			fremove(f);
-			format(f, 256, "gangs/%i.ini", i);
-			file = ini_createFile(f);
-			if(file >= 0)
-			{
-				ini_setString(file, "Gang TDReg", GTDReg[i]);
-				ini_setString(file, "Gang head", GHead[i]);
-				ini_setString(file, "Gang name", GName[i]);
-				ini_setString(file, "Gang color", GColor[i]);
-				ini_setFloat(file, "SpawnX", GSpawnX[i]);
-				ini_setFloat(file, "SpawnY", GSpawnY[i]);
-				ini_setFloat(file, "SpawnZ", GSpawnZ[i]);
-				ini_setInteger(file, "GInter", GInter[i]);
-				ini_setInteger(file, "GWorld", GWorld[i]);
-				ini_setInteger(file, "Skin1", GSkin[i][0]);
-				ini_setInteger(file, "Skin2", GSkin[i][1]);
-				ini_setInteger(file, "Skin3", GSkin[i][2]);
-				ini_setInteger(file, "Skin4", GSkin[i][3]);
-				ini_setInteger(file, "Skin5", GSkin[i][4]);
-				ini_setInteger(file, "Skin6", GSkin[i][5]);
-				ini_setInteger(file, "Players", GPlayers[i]);
-				ini_closeFile(file);
-			}
-		}
-//---------------------------------- конец -------------------------------------
 	    format(f, 256, "gangs/%i.ini", i);
 		file = ini_openFile(f);
 		if(file >= 0)
@@ -31658,7 +32165,7 @@ public GangLoad()
 		    Gang[i] = 0;
 		    GangSA[i] = 0;
 		}
-//эти строки оставлены для совместимости с ранней версией мода !!!
+//корректировка ошибок в названии и цвете банды
 //--------------------------------- начало -------------------------------------
 		dopper = 0;//замена запрещённых кодов на 20h (пробел) в названии банды
 		dopper22 = strlen(GName[i]);
@@ -31696,79 +32203,11 @@ public GangLoad()
 				ini_closeFile(file);
 			}
 		}
-//---------------------------------- конец -------------------------------------
 		GColorDec[i] = para1;
 		strdel(GColorHex[i], 0, 16);
 		strmid(GColorHex[i], GColor[i], 0, 6, 16);
-	}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-	new dfile, df1[256], dakk[64], ddata1, ddata2, ddata3, ddata4;
-	gettime(timecor[0], timecor[1]);
-	getdate(timecor[2], timecor[3], timecor[4]);
-	TimCor();//коррекция времени
-	DatCor();//коррекция даты
-	ddata4 = ((timecor[2] - 2000) * 366) + (timecor[3] * 31) + timecor[4];
-	for(new i = 0; i < 200; i++)
-	{
-		format(df1, sizeof(df1), "madmins/data/%d.ini", i);
-		if(fexist(df1))
-		{
-			dfile = ini_openFile(df1);
-			if(dfile >= 0)
-			{
-				ini_getString(dfile, "DataName", dakk);
-				ini_closeFile(dfile);
-			}
-			fremove(df1);
-			if(strlen(dakk) > 0)
-			{
-				format(df1, sizeof(df1), "madmins/players/%s.ini", dakk);
-				if(fexist(df1))
-				{
-					dfile = ini_openFile(df1);
-					if(dfile >= 0)
-					{
-						ini_getInteger(dfile, "DataDay", ddata1);
-						ini_getInteger(dfile, "TwenLim", ddata2);
-						ini_getInteger(dfile, "RestLim", ddata3);
-						ini_closeFile(dfile);
-					}
-					fremove(df1);
-					format(df1, sizeof(df1), "madmins/%s.ini", dakk);
-					if(fexist(df1))
-					{
-						fremove(df1);
-					}
-					dfile = ini_createFile(df1);
-					if(dfile >= 0)
-					{
-						ini_setInteger(dfile, "DataDay", ddata1);
-						ini_setInteger(dfile, "TwenLim", ddata2);
-						ini_setInteger(dfile, "RestLim", ddata3);
-						ini_closeFile(dfile);
-					}
-				}
-				else
-				{
-					format(df1, sizeof(df1), "madmins/%s.ini", dakk);
-					if(fexist(df1))
-					{
-						fremove(df1);
-					}
-					dfile = ini_createFile(df1);
-					if(dfile >= 0)
-					{
-						ini_setInteger(dfile, "DataDay", ddata4);
-						ini_setInteger(dfile, "TwenLim", 0);
-						ini_setInteger(dfile, "RestLim", 0);
-						ini_closeFile(dfile);
-					}
-				}
-			}
-		}
-	}
 //---------------------------------- конец -------------------------------------
+	}
 	return true;
 }
 
@@ -32026,7 +32465,7 @@ public LevelUpdate()
 			if(Score >= 500000 && Score < 600000) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}Игрок{FFFFFF}*\n*Уровень: {00CCFF}6{FFFFFF}.*\n*{00CCFF}Пахан{FFFFFF}*");
 			if(Score >= 600000 && Score < 700000) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}7{FFFFFF}.*\n*{00CCFF}Pro Drifter{FFFFFF}*");
 			if(Score >= 700000 && Score < 800000) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}8{FFFFFF}.*\n*{00CCFF}VIP{FFFFFF}*");
-			if(Score >= 800000 && Score < 900000) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Гловарь{FFFFFF}*");
+			if(Score >= 800000 && Score < 900000) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}9{FFFFFF}.*\n*{00CCFF}Главарь{FFFFFF}*");
 			if(Score >= 900000 ) format(Playerdr[i][Level],200,"{FFFFFF}*{00CCFF}*ViP*{FFFFFF}*\n*Уровень: {00CCFF}*10*{FFFFFF}.*\n*{00CCFF}Король дрифта{FFFFFF}*");
 			if(scrmod[3][i] == 0 && dmlock[i] == 0)
 			{
@@ -32205,6 +32644,7 @@ public Drift(){
 				SetTimerEx("PlayKick", 300, 0, "i", g);
  			}
 //-------------------- антикрашер игроков - 2 (конец) --------------------------
+/*
 //---- антикрашер игроков - 6 (январь 2018, краш обнаружен на версии 0.3.7) ----
 			if(reg88 != 0 &&
 			-0.0005 < coord[0] < 0.0005 && -0.0005 < coord[1] < 0.0005 && -0.0005 < coord[2] < 0.0005)
@@ -32224,6 +32664,27 @@ public Drift(){
 				print(string);
 				SendClientMessageToAll(COLOR_RED, string);
 				SetTimerEx("PlayKick", 300, 0, "i", g);
+			}
+//-------------------- антикрашер игроков - 6 (конец) --------------------------
+*/
+//---- антикрашер игроков - 6 (январь 2021, краш обнаружен на версии 0.3.7) ----
+			if(reg88 != 0 &&
+			-0.0005 < coord[0] < 0.0005 && -0.0005 < coord[1] < 0.0005 && -0.0005 < coord[2] < 0.0005)
+			{
+				new Float:coordlocpl[3];
+				GetPlayerPos(g, coordlocpl[0], coordlocpl[1], coordlocpl[2]);
+				SetPlayerPos(g, coordlocpl[0], coordlocpl[1], coordlocpl[2]);
+				SetPlayerFacingAngle(g, angcrash6[g]);
+				SetCameraBehindPlayer(g);
+			}
+			if(GetPlayerState(g) == 2 || GetPlayerState(g) == 3)
+			{
+				new VID = GetPlayerVehicleID(g);
+				GetVehicleZAngle(VID, angcrash6[g]);
+			}
+			else
+			{
+				GetPlayerFacingAngle(g, angcrash6[g]);
 			}
 //-------------------- антикрашер игроков - 6 (конец) --------------------------
 		}
@@ -32785,7 +33246,8 @@ public DubTlp(playerid)
 	PlayCRTP[playerid] = 1;//блокировка контроля координат
 	if (GetPlayerState(playerid) == 2)
 	{
-		new regm = 2, per1 = 0, per2 = 0, Float:per3;
+		new regm = 2, per1 = 0, per2, Float:per3;
+		per2 = TpPosP[playerid];
 		per3 = TpDestP[playerid][3];
 		StopDrift(playerid,regm,per1,per2,Float:per3,Float:TpDestP[playerid][0],Float:TpDestP[playerid][1],Float:TpDestP[playerid][2]+1);
 	}
@@ -32793,7 +33255,7 @@ public DubTlp(playerid)
 	{
 		tpdrift[playerid] = 1;
 		SetPlayerInterior(playerid, 0);
-		SetPlayerVirtualWorld(playerid, 0);
+		SetPlayerVirtualWorld(playerid, TpPosP[playerid]);
 		SetPlayerPos(playerid, TpDestP[playerid][0],TpDestP[playerid][1],TpDestP[playerid][2]+1);
 		SetPlayerFacingAngle(playerid, TpDestP[playerid][3]);
 		SetCameraBehindPlayer(playerid);
@@ -33174,6 +33636,16 @@ public STATPlayer(playerid)
 	}
 	format(string, sizeof(string), "%s%s", sstr1, sstr2);
 	SendClientMessage(playerid, COLOR_GREEN, string);
+#if (MOD4DINS >= 1)
+	if(PlayerInfo[playerid][pAdmin] == 0)
+	{
+		FnPrnPass(1, playerid, 0);//печать для собственной статистики он-лайн игрока [pPass_ver1]
+	}
+	if(PlayerInfo[playerid][pAdmin] >= 1)
+	{
+		FnPrnPass(2, playerid, 0);//печать для собственной статистики он-лайн админа [pPass_ver1][pPass_inout1][pPass_count1]
+	}
+#endif
 	if(pertrain == 0)
 	{
 		SendClientMessage(playerid, COLOR_RED, " Всем игрокам ЗАПРЕЩЕНО водить поезда !");
@@ -33218,7 +33690,7 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
 
 public ClearIP(playerid)
 {
-	strdel(twoIP[playerid],0,126);
+	strdel(twoIP[playerid],0,128);
 	return 1;
 }
 
@@ -33227,6 +33699,10 @@ public AdmUpdate(AdmName[], AdmLvl, AdmReas)//регистрация админов (пользовательс
 	new string[256], persea[64], rea[8], dopper, dopper22;//объявление новых переменных
 	dopper = 0;//записываем 0 в 1-маркерную переменную
 	dopper22 = 0;//записываем 0 во 2-маркерную переменную
+	if(AdmLvl < 0)//замена на "положительный" лвл админа (при маграции аккаунта в БД)
+	{
+		AdmLvl = AdmLvl * -1;
+	}
 	format(persea, sizeof(persea), "%s -[%d]", AdmName, AdmLvl);//формируем переменную для поиска
 	format(rea, sizeof(rea), " -[%d]", AdmReas);//формируем дополнительную переменную для регистрации
 	for(new i = 0; i < 100; i++)//поиск лога админа в регистрации
@@ -34957,8 +35433,16 @@ public ResServ(per)
 	fileClose(outLog);//закрываем резервную копию сервер-лога
 #endif
 
+	SetTimerEx("ResServ555", 1000, 0, "i", per);
+	return 1;
+}
+
+forward ResServ555(per);
+public ResServ555(per)
+{
+	conopen222 = 0;//отключение коннекта к серверу
 #if (MOD90INS == 0)
-	SetTimerEx("ResServ222", 5000, 0, "i", per);
+	SetTimerEx("ResServ333", 5000, 0, "i", per);
 #endif
 #if (MOD90INS == 1)
 	SetTimerEx("ResServ444", 10000, 0, "i", per);
@@ -34966,10 +35450,21 @@ public ResServ(per)
 	return 1;
 }
 
+#if (MOD90INS == 0)
+	forward ResServ333(per);
+	public ResServ333(per)
+	{
+		db_close(scrnet1db);//отключаем базу данных сетевого экрана 1 от сервера
+		SetTimerEx("ResServ222", 1000, 0, "i", per);
+		return 1;
+	}
+#endif
+
 #if (MOD90INS == 1)
 	forward ResServ444(per);
 	public ResServ444(per)
 	{
+		db_close(scrnet1db);//отключаем базу данных сетевого экрана 1 от сервера
 		db_close(playerdb);//отключаем базу данных аккаунтов игроков от сервера
 		SetTimerEx("ResServ222", 1000, 0, "i", per);
 		return 1;
@@ -35043,8 +35538,8 @@ stock ConvIP(ipadr[])
 
 public PlayBanList(playerid, reason[], idbanf)
 {
-	new string[256], ip[126];
-	GetPlayerIp(playerid, ip, sizeof(ip));
+	new string[256], dataip[128];
+	GetPlayerIp(playerid, dataip, sizeof(dataip));
 	gettime(timecor[0], timecor[1]);
 	getdate(timecor[2], timecor[3], timecor[4]);
 	TimCor();//коррекция времени
@@ -35054,83 +35549,102 @@ public PlayBanList(playerid, reason[], idbanf)
 	format(string,sizeof(string),"players/%s.ini",RealName[playerid]);
 	if(!fexist(string))//если аккаунт игрока НЕ существует, то:
 	{//создаём аккаунт игрока:
-		new datak[256], datar[256];
-		strdel(datak, 0, 256);
+		new datak[64], datar[64], datap[64];
+		strdel(datak, 0, 64);
 		strcat(datak, "111");
 		format(datar, 256, "%02d:%02d - %02d/%02d/%04d", timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+		strdel(datap, 0, 64);
+		strcat(datap, "---");
 		new File: hFile44 = fopen(string, io_write);
 		if (hFile44)
 		{
-			new var[32];
-			format(var, 32, "Key=%s\n",datak);fwrite(hFile44, var);
-			format(var, 32, "TDReg=%s\n",datar);fwrite(hFile44, var);
-			format(var, 32, "IPAdr=%s\n",ip);fwrite(hFile44, var);
-			format(var, 32, "MinLog=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "AdminLevel=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "AdminShadow=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "AdminLive=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Registered=%d\n",1);fwrite(hFile44, var);
-			format(var, 32, "Prison=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Prisonsec=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Muted=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Mutedsec=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Money=%d\n",1000);fwrite(hFile44, var);
-			format(var, 32, "Kills=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Deaths=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "VIP=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Lock=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Gang=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "GangLvl=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "PISTOL=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "PISTOL_SILENCED=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "DESERT_EAGLE=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "SHOTGUN=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "SAWNOFF_SHOTGUN=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "SPAS12_SHOTGUN=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "MICRO_UZI=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "MP5=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "AK47=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "M4=%d\n",0);fwrite(hFile44, var);
-//			format(var, 32, "SNIPERRIFLE=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot0=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot1=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot2=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot3=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot4=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot5=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot6=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot7=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot8=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot9=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot10=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot11=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Weapon_slot12=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot0=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot1=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot2=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot3=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot4=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot5=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot6=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot7=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot8=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot9=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot10=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot11=%d\n",0);fwrite(hFile44, var);
-			format(var, 32, "Ammo_slot12=%d\n",0);fwrite(hFile44, var);
+			new var[128];
+			format(var, 128, "Key=%s\n",datak);fwrite(hFile44, var);
+			format(var, 128, "TDReg=%s\n",datar);fwrite(hFile44, var);
+			format(var, 128, "DEndConD=%d\n",EndConD);fwrite(hFile44, var);
+			format(var, 128, "DEndConM=%d\n",EndConM);fwrite(hFile44, var);
+			format(var, 128, "DEndConY=%d\n",EndConY);fwrite(hFile44, var);
+			format(var, 128, "IPAdr=%s\n",dataip);fwrite(hFile44, var);
+			format(var, 128, "MinLog=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "AdminLevel=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "AdminShadow=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "AdminLive=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Registered=%d\n",1);fwrite(hFile44, var);
+			format(var, 128, "Prison=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Prisonsec=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Muted=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Mutedsec=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Money=%d\n",1000);fwrite(hFile44, var);
+			format(var, 128, "Kills=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Deaths=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "VIP=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Lock=%d\n",1);fwrite(hFile44, var);
+			format(var, 128, "Gang=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "GangLvl=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "PISTOL=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "PISTOL_SILENCED=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "DESERT_EAGLE=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "SHOTGUN=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "SAWNOFF_SHOTGUN=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "SPAS12_SHOTGUN=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "MICRO_UZI=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "MP5=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "AK47=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "M4=%d\n",0);fwrite(hFile44, var);
+//			format(var, 128, "SNIPERRIFLE=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot0=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot1=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot2=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot3=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot4=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot5=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot6=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot7=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot8=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot9=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot10=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot11=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Weapon_slot12=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot0=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot1=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot2=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot3=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot4=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot5=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot6=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot7=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot8=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot9=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot10=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot11=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Ammo_slot12=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Pass_data1=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_inout1=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_ver1=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_count1=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Pass_data2=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_inout2=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_ver2=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_count2=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Pass_data3=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_inout3=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_ver3=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_count3=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "Pass_data4=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_inout4=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_ver4=%s\n",datap);fwrite(hFile44, var);
+			format(var, 128, "Pass_count4=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "PassMode=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "PassDel=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "PassLock=%d\n",0);fwrite(hFile44, var);
+			format(var, 128, "PassError=%d\n",0);fwrite(hFile44, var);
 			fclose(hFile44);
 		}
 	}
 #endif
 #if (MOD90INS == 1)
 	new strdln[5000];
-	new igkey[256],tdreg[256],adrip[256],data2[53];
 	new mgrakk = 0;
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-	new gngakkrd = 0;
-	new string999[256];
-//---------------------------------- конец -------------------------------------
 	format(string,sizeof(string),"players/%s.ini",RealName[playerid]);
 	if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
 	{
@@ -35141,87 +35655,87 @@ public PlayBanList(playerid, reason[], idbanf)
 		while ( fread( UserFile , Data , sizeof( Data ) ) )
 		{
 			key = ini_GetKey( Data );
-			if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-			if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-			if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-			if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-			if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
+			if( strcmp( key , "Key" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dKey], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "TDReg" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dTDReg], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "DEndConD" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConD] = strval( val ); }
+			if( strcmp( key , "DEndConM" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConM] = strval( val ); }
+			if( strcmp( key , "DEndConY" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConY] = strval( val ); }
+			if( strcmp( key , "IPAdr" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dIPAdr], val, 0, strlen(val)-1, 128); }
+			if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMinlog] = strval( val ); }
+		    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmin] = strval( val ); }
+		    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmshad] = strval( val ); }
+		    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmlive] = strval( val ); }
+			if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dReg] = strval( val ); }
+			if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrison] = strval( val ); }
+			if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrisonsec] = strval( val ); }
+			if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMuted] = strval( val ); }
+			if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMutedsec] = strval( val ); }
+			if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMoney] = strval( val ); }
+			if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dKills] = strval( val ); }
+			if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDeaths] = strval( val ); }
+			if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dVIP] = strval( val ); }
+			if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dLock] = strval( val ); }
+			if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGang] = strval( val ); }
+			if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGangLvl] = strval( val ); }
+//			if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL] = strval( val ); }
+//			if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL_SILENCED] = strval( val ); }
+//			if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDESERT_EAGLE] = strval( val ); }
+//			if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSHOTGUN] = strval( val ); }
+//			if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSAWNOFF_SHOTGUN] = strval( val ); }
+//			if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSPAS12_SHOTGUN] = strval( val ); }
+//			if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMICRO_UZI] = strval( val ); }
+//			if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMP5] = strval( val ); }
+//			if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAK47] = strval( val ); }
+//			if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dM4] = strval( val ); }
+//			if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSNIPERRIFLE] = strval( val ); }
+			if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot0] = strval( val ); }
+			if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot1] = strval( val ); }
+			if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot2] = strval( val ); }
+			if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot3] = strval( val ); }
+			if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot4] = strval( val ); }
+			if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot5] = strval( val ); }
+			if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot6] = strval( val ); }
+			if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot7] = strval( val ); }
+			if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot8] = strval( val ); }
+			if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot9] = strval( val ); }
+			if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot10] = strval( val ); }
+			if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot11] = strval( val ); }
+			if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot12] = strval( val ); }
+			if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot0] = strval( val ); }
+			if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot1] = strval( val ); }
+			if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot2] = strval( val ); }
+			if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot3] = strval( val ); }
+			if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot4] = strval( val ); }
+			if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot5] = strval( val ); }
+			if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot6] = strval( val ); }
+			if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot7] = strval( val ); }
+			if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot8] = strval( val ); }
+			if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot9] = strval( val ); }
+			if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot10] = strval( val ); }
+			if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot11] = strval( val ); }
+			if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot12] = strval( val ); }
+			if( strcmp( key , "Pass_data1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data1], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout1], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver1], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count1] = strval( val ); }
+			if( strcmp( key , "Pass_data2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data2], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout2], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver2], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count2] = strval( val ); }
+			if( strcmp( key , "Pass_data3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data3], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout3], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver3], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count3] = strval( val ); }
+			if( strcmp( key , "Pass_data4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data4], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout4], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver4], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count4] = strval( val ); }
+			if( strcmp( key , "PassMode" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassMode] = strval( val ); }
+			if( strcmp( key , "PassDel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassDel] = strval( val ); }
+			if( strcmp( key , "PassLock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassLock] = strval( val ); }
+			if( strcmp( key , "PassError" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassError] = strval( val ); }
 		}
 		fclose(UserFile);
-		strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-		strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-		strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-		format(string999,sizeof(string999),"gangs/players/%s.ini",RealName[playerid]);
-		if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-		{
-			gngakkrd = 1;
-			new string333[256];
-			format(string333,sizeof(string333),"gangs/players/%s.ini",RealName[playerid]);
-			new File: UserFile333 = fopen(string333, io_read);//чтение файла
-			new key333[ 256 ] , val333[ 256 ];
-			new Data333[ 256 ];
-			while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-			{
-				key333 = ini_GetKey( Data333 );
-				if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-				if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-			}
-			fclose(UserFile333);
-		}
-//---------------------------------- конец -------------------------------------
 	}
 	else//иначе: (если аккаунт зарегистрирован в SQLite)
 	{
@@ -35230,31 +35744,44 @@ public PlayBanList(playerid, reason[], idbanf)
 		if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
 		{//если число строк = 0 (такого аккаунта в БД нет), то - создаём аккаунт игрока:
 			db_free_result(querydb[playerid]);//очищаем результат запроса БД
-			new datak[256], datar[256];
-			strdel(datak, 0, 256);
+			new datak[64], datar[64], datap[64];
+			strdel(datak, 0, 64);
 			strcat(datak, "111");
 			format(datar, 256, "%02d:%02d - %02d/%02d/%04d", timecor[0], timecor[1], timecor[4], timecor[3], timecor[2]);
+			strdel(datap, 0, 64);
+			strcat(datap, "---");
 
 			format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
 			format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
 			format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
 			format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
 			format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-			format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-			format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],datak,datar);
-			format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, ip);
-			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,1,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s1000,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0,0,0,", strdln);
-			format(strdln, sizeof(strdln), "%s0,0)", strdln);
+			format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12,Pass_data1,Pass_inout1,Pass_ver1,Pass_count1,Pass_data2,", strdln);
+			format(strdln, sizeof(strdln), "%sPass_inout2,Pass_ver2,Pass_count2,Pass_data3,Pass_inout3,Pass_ver3,Pass_count3,Pass_data4,", strdln);
+			format(strdln, sizeof(strdln), "%sPass_inout4,Pass_ver4,Pass_count4,PassMode,PassDel,PassLock,PassError) ", strdln);
+			format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],datak,datar);//Name,Key,TDReg
+			format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, EndConD,EndConM,EndConY);//DEndConD,DEndConM,DEndConY
+			format(strdln, sizeof(strdln), "%s'%s',0,0,", strdln, dataip);//IPAdr,MinLog,AdminLevel
+			format(strdln, sizeof(strdln), "%s0,0,1,", strdln);//AdminShadow,AdminLive,Registered
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Prison,Prisonsec,Muted
+			format(strdln, sizeof(strdln), "%s0,1000,0,", strdln);//Mutedsec,Money,Kills
+			format(strdln, sizeof(strdln), "%s0,0,1,", strdln);//Deaths,VIP,Lock
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Gang,GangLvl,Weapon_slot0
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Weapon_slot1,Weapon_slot2,Weapon_slot3
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Weapon_slot4,Weapon_slot5,Weapon_slot6
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Weapon_slot7,Weapon_slot8,Weapon_slot9
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Weapon_slot10,Weapon_slot11,Weapon_slot12
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Ammo_slot0,Ammo_slot1,Ammo_slot2
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Ammo_slot3,Ammo_slot4,Ammo_slot5
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Ammo_slot6,Ammo_slot7,Ammo_slot8
+			format(strdln, sizeof(strdln), "%s0,0,0,", strdln);//Ammo_slot9,Ammo_slot10,Ammo_slot11
+			format(strdln, sizeof(strdln), "%s0,'%s','%s',", strdln, datap,datap);//Ammo_slot12,Pass_data1,Pass_inout1
+			format(strdln, sizeof(strdln), "%s'%s',0,'%s',", strdln, datap,datap);//Pass_ver1,Pass_count1,Pass_data2
+			format(strdln, sizeof(strdln), "%s'%s','%s',0,", strdln, datap,datap);//Pass_inout2,Pass_ver2,Pass_count2
+			format(strdln, sizeof(strdln), "%s'%s','%s','%s',", strdln, datap,datap,datap);//Pass_data3,Pass_inout3,Pass_ver3
+			format(strdln, sizeof(strdln), "%s0,'%s','%s',", strdln, datap,datap);//Pass_count3,Pass_data4,Pass_inout4
+			format(strdln, sizeof(strdln), "%s'%s',0,0,", strdln, datap);//Pass_ver4,Pass_count4,PassMode
+			format(strdln, sizeof(strdln), "%s0,0,0)", strdln);//PassDel,PassLock,PassError
 			db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
 
 		}
@@ -35265,35 +35792,42 @@ public PlayBanList(playerid, reason[], idbanf)
 		format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", RealName[playerid]);//миграция аккаунта в БД, создаём запрос БД
 		db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
 
+		admData[playerid][dLock] = 1;//блокировка аккаунта при миграции
+
 		format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
 		format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
 		format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
 		format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
 		format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-		format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-		format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],igkey,tdreg);//IDCopy,Name,Key,TDReg
-		format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-		format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-		format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
+		format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12,Pass_data1,Pass_inout1,Pass_ver1,Pass_count1,Pass_data2,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout2,Pass_ver2,Pass_count2,Pass_data3,Pass_inout3,Pass_ver3,Pass_count3,Pass_data4,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout4,Pass_ver4,Pass_count4,PassMode,PassDel,PassLock,PassError) ", strdln);
+		format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, RealName[playerid],admData[playerid][dKey],admData[playerid][dTDReg]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dEndConD],admData[playerid][dEndConM],admData[playerid][dEndConY]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,%d,", strdln, admData[playerid][dIPAdr],admData[playerid][dMinlog],admData[playerid][dAdmin]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAdmshad],admData[playerid][dAdmlive],admData[playerid][dReg]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dPrison],admData[playerid][dPrisonsec],admData[playerid][dMuted]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dMutedsec],admData[playerid][dMoney],admData[playerid][dKills]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dDeaths],admData[playerid][dVIP],admData[playerid][dLock]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dGang],admData[playerid][dGangLvl],admData[playerid][dWeapon_slot0]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot1],admData[playerid][dWeapon_slot2],admData[playerid][dWeapon_slot3]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot4],admData[playerid][dWeapon_slot5],admData[playerid][dWeapon_slot6]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot7],admData[playerid][dWeapon_slot8],admData[playerid][dWeapon_slot9]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot10],admData[playerid][dWeapon_slot11],admData[playerid][dWeapon_slot12]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot0],admData[playerid][dAmmo_slot1],admData[playerid][dAmmo_slot2]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot3],admData[playerid][dAmmo_slot4],admData[playerid][dAmmo_slot5]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot6],admData[playerid][dAmmo_slot7],admData[playerid][dAmmo_slot8]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot9],admData[playerid][dAmmo_slot10],admData[playerid][dAmmo_slot11]);
+		format(strdln, sizeof(strdln), "%s%d,'%s','%s',", strdln, admData[playerid][dAmmo_slot12],admData[playerid][dPass_data1],admData[playerid][dPass_inout1]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,'%s',", strdln, admData[playerid][dPass_ver1],admData[playerid][dPass_count1],admData[playerid][dPass_data2]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',%d,", strdln, admData[playerid][dPass_inout2],admData[playerid][dPass_ver2],admData[playerid][dPass_count2]);
+		format(strdln, sizeof(strdln), "%s'%s','%s','%s',", strdln, admData[playerid][dPass_data3],admData[playerid][dPass_inout3],admData[playerid][dPass_ver3]);
+		format(strdln, sizeof(strdln), "%s%d,'%s','%s',", strdln, admData[playerid][dPass_count3],admData[playerid][dPass_data4],admData[playerid][dPass_inout4]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,%d,", strdln, admData[playerid][dPass_ver4],admData[playerid][dPass_count4],admData[playerid][dPassMode]);
+		format(strdln, sizeof(strdln), "%s%d,%d,", strdln, admData[playerid][dPassDel],admData[playerid][dPassLock]);
+		format(strdln, sizeof(strdln), "%s%d)", strdln, admData[playerid][dPassError]);
 		db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
 
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-		if(gngakkrd == 1)
-		{
-			fremove(string999);
-		}
-//---------------------------------- конец -------------------------------------
 		if(fexist(string))
 		{
 			fremove(string);//удаляем аккаунт из fopen
@@ -35302,7 +35836,7 @@ public PlayBanList(playerid, reason[], idbanf)
 #endif
 
 	new stringdop[256];
-	format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",ip,timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
+	format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - %s",dataip,timecor[0],timecor[1],timecor[4],timecor[3],timecor[2],reason);
 	format(string,sizeof(string),"banlist/players/%s.ini",RealName[playerid]);
 	new File: hFile = fopen(string, io_write);//запись файла
 	if (hFile)
@@ -35410,7 +35944,7 @@ public PlayBanTimer(admlvl, target)
 		strdel(NameTarget[target], 0, MAX_PLAYER_NAME);//очистка ника игрока по таймеру
 		return 1;
 	}
-	new ip[126];
+	new ip[128];
 	GetPlayerIp(target, ip, sizeof(ip));
 	format(string, 256, " *** Админ %s забанил игрока %s , причина: %s", NameAdmin[target], NameTarget[target], ReasonTarget[target]);
 	print(string);
@@ -35487,7 +36021,7 @@ public TMPlayBanTimer(admlvl, target, dayban)
 		strdel(NameTarget[target], 0, MAX_PLAYER_NAME);//очистка ника игрока по таймеру
 		return 1;
 	}
-	new ip[126];
+	new ip[128];
 	GetPlayerIp(target, ip, sizeof(ip));
 	format(string, 256, " *** Админ %s забанил игрока %s на %d суток , причина: %s", NameAdmin[target], NameTarget[target], dayban, ReasonTarget[target]);
 	print(string);
@@ -35628,13 +36162,12 @@ public AutoUnban()
 			strdel(ip22, strlen(ip22)-1, strlen(ip22));//корректировка IP-адреса
 			if(idfile == timecor[4])//если число разбана = числу на сервере, то:
 			{
-   				new ssss[256],igkey[256],tdreg[256],adrip[256],data2[54],string[256],string222[256];
-				data2[53] = 0;//переменная проверки блокировки аккаунта
-#if (MOD90INS == 0)
-				format(string,sizeof(string),"players/%s.ini",akk);
-//        		format(string,sizeof(string),"%s.ini",akk);
-				if(!fexist(string))
-				{
+   				new ssss[256],datacon,string222[256],ip333[128];
+				datacon = 0;//переменная проверки блокировки аккаунта
+				strdel(dAccName[MAX_PLAYERS - 1], 0, 64);
+				strcat(dAccName[MAX_PLAYERS - 1], akk);
+				if(AccDataLoadUn(MAX_PLAYERS - 1) == 0)//чтение аккаунта
+				{//если аккаунта игрока не существует, то:
 					printf("+++ [BanTime] Аккаунт игрока [%s] не сущесвует !!! +++", akk);
 					strdel(ssss, 0, 256);//сборка RCON-команды разбана
 					strcat(ssss, "unbanip ");
@@ -35642,7 +36175,6 @@ public AutoUnban()
 					SendRconCommand(ssss);//RCON-команда разбана
 					printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", ip22);
 
-					new ip333[128];
 					ip333 = ConvIP(ip22);
 					format(string222,sizeof(string222),"bantime/%d.ini",i);
 					if(fexist(string222))
@@ -35663,188 +36195,43 @@ public AutoUnban()
 						printf("+++ [BanTime] IP-адрес [%s] был удалён из бан-листа +++", ip22);
 					}
 				}
-				else
+				else//если аккаунт игрока существует, то:
 				{
-					new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    	new key[ 256 ] , val[ 256 ];
-			    	new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
+					if(admData[MAX_PLAYERS - 1][dLock] == 1 && admData[MAX_PLAYERS - 1][dVIP] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
 					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    		if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    		if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    		if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        	if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        	if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        	if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        	if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        	if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        	if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        	if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        	if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        	if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        	if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        	if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        	if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        	if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        	if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        	if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        	if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        	if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        	if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        	if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        	if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        	if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                	}
-                	fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new gngakkrd = 0;
-					new string888[256];
-					format(string888,sizeof(string888),"gangs/players/%s.ini",akk);
-					if(fexist(string888))//читаем аккаунт из системы банд (если файл существует)
-					{
-						gngakkrd = 1;
-    					new f[256];
-    					format(f, 256, "gangs/players/%s.ini", akk);
-						new file = ini_openFile(f);
-						if(file >= 0)
-						{
-	    					ini_getInteger(file, "Gang", data2[14]);
-	    					ini_getInteger(file, "GangLvl", data2[15]);
-							ini_closeFile(file);
-						}
+				    	admData[MAX_PLAYERS - 1][dVIP] = 0;//убрать статус депортации
 					}
-//---------------------------------- конец -------------------------------------
-					if(data2[13] == 1 && data2[12] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
+					if(admData[MAX_PLAYERS - 1][dLock] == 0)//если аккаунт НЕ был заблокирован, то:
 					{
-				    	data2[12] = 0;//убрать статус депортации
+				    	datacon = 1;//записываем в переменную проверки блокировки аккаунта 1
 					}
-					if(data2[13] == 0)//если аккаунт НЕ был заблокирован, то:
-					{
-				    	data2[53] = 1;//записываем в переменную проверки блокировки аккаунта 1
-					}
-					data2[13] = 0;//сброс блокировки аккаунта
+					admData[MAX_PLAYERS - 1][dLock] = 0;//сброс блокировки аккаунта
 					strdel(ssss, 0, 256);//сборка RCON-команды разбана
 					strcat(ssss, "unbanip ");
-					strcat(ssss, adrip);
+					strcat(ssss, admData[MAX_PLAYERS - 1][dIPAdr]);
 					SendRconCommand(ssss);//RCON-команда разбана
-					new File: hFile = fopen(string, io_write);//запись изменённого аккаунта
-					if (hFile)
-					{
-						new var[32];
-						format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-						format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-						format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-						format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-						format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-						format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-						format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-						format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-						format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-						format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-						format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-						format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-						format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-						format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-						format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-						format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-						format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-						format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-						format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//						format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//						format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//						format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//						format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//						format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//						format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//						format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//						format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//						format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-						fclose(hFile);
-					}
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					if(gngakkrd == 1)
-					{
-						fremove(string888);//удаляем аккаунт из системы банд
-					}
-//---------------------------------- конец -------------------------------------
-					if(data2[53] == 1)//если переменная проверки блокировки аккаунта = 1, то:
+#if (MOD90INS == 0)
+					strdel(dAccName[MAX_PLAYERS - 1], 0, 64);
+					strcat(dAccName[MAX_PLAYERS - 1], akk);
+					AccDataSaveFo(MAX_PLAYERS - 1);//запись изменённого аккаунта
+#endif
+#if (MOD90INS == 1)
+					new strdln[1000];
+					format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,Lock = %d ",admData[MAX_PLAYERS - 1][dVIP],admData[MAX_PLAYERS - 1][dLock]);//создаём запрос БД
+					format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
+					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
+#endif
+					if(datacon == 1)//если переменная проверки блокировки аккаунта = 1, то:
 					{
 						printf("+++ [BanTime] Аккаунт игрока [%s] не был заблокирован +++", akk);
-						printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", adrip);
+						printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", admData[MAX_PLAYERS - 1][dIPAdr]);
 					}
 					else//иначе:
 					{
-						printf("+++ [BanTime] Аккаунт игрока [%s] был разбанен ( IP: [%s] ) +++", akk, adrip);
+						printf("+++ [BanTime] Аккаунт игрока [%s] был разбанен ( IP: [%s] ) +++", akk, admData[MAX_PLAYERS - 1][dIPAdr]);
 					}
 
-					new ip333[128];
-					ip333 = ConvIP(adrip);
+					ip333 = ConvIP(admData[MAX_PLAYERS - 1][dIPAdr]);
 					format(string222,sizeof(string222),"bantime/%d.ini",i);
 					if(fexist(string222))
 					{
@@ -35861,285 +36248,9 @@ public AutoUnban()
 					if(fexist(string222))
 					{
 						fremove(string222);//удаляем IP-адрес из бан-листа
-						printf("+++ [BanTime] IP-адрес [%s] был удалён из бан-листа +++", adrip);
+						printf("+++ [BanTime] IP-адрес [%s] был удалён из бан-листа +++", admData[MAX_PLAYERS - 1][dIPAdr]);
 					}
 				}
-#endif
-#if (MOD90INS == 1)
-				new strdln[5000];
-				format(string,sizeof(string),"players/%s.ini",akk);
-//        		format(string,sizeof(string),"%s.ini",akk);
-				if(!fexist(string))//если аккаунт НЕ зарегистрирован в fopen, то:
-				{//проверим регистрацию в SQLite
-					new ip333[128];
-					format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-					querydbau = db_query(playerdb, ssss);//отправляем запрос БД
-					if(db_num_rows(querydbau) == 0)//переведём результат запроса в число найденных строк в БД
-					{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-						db_free_result(querydbau);//очищаем результат запроса БД
-						printf("+++ [BanTime] Аккаунт игрока [%s] не сущесвует !!! +++", akk);
-						strdel(ssss, 0, 256);//сборка RCON-команды разбана
-						strcat(ssss, "unbanip ");
-						strcat(ssss, ip22);
-						SendRconCommand(ssss);//RCON-команда разбана
-						printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", ip22);
-
-						ip333 = ConvIP(ip22);
-						format(string222,sizeof(string222),"bantime/%d.ini",i);
-						if(fexist(string222))
-						{
-							fremove(string222);//удаление ид-файла временного бана
-							printf("+++ [BanTime] Файл временного бана игрока [%s] был удалён ( ид [%d] ) +++", akk, i);
-						}
-					}
-					else//иначе: (если аккаунт зарегистрирован в БД)
-					{
-						new buffer[32];//читаем данные из БД
-						db_get_field(querydbau, 7, adrip, 256);//IPAdr
-						db_get_field(querydbau, 20, buffer, 32); data2[12] = strval(buffer);//VIP
-						db_get_field(querydbau, 21, buffer, 32); data2[13] = strval(buffer);//Lock
-						db_free_result(querydbau);//очищаем результат запроса БД
-
-						if(data2[13] == 1 && data2[12] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
-						{
-				    		data2[12] = 0;//убрать статус депортации
-						}
-						if(data2[13] == 0)//если аккаунт НЕ был заблокирован, то:
-						{
-				    		data2[53] = 1;//записываем в переменную проверки блокировки аккаунта 1
-						}
-						data2[13] = 0;//сброс блокировки аккаунта
-						strdel(ssss, 0, 256);//сборка RCON-команды разбана
-						strcat(ssss, "unbanip ");
-						strcat(ssss, adrip);
-						SendRconCommand(ssss);//RCON-команда разбана
-
-						format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,Lock = %d ",data2[12],data2[13]);//создаём запрос БД
-						format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
-						db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-						if(data2[53] == 1)//если переменная проверки блокировки аккаунта = 1, то:
-						{
-							printf("+++ [BanTime] Аккаунт игрока [%s] не был заблокирован +++", akk);
-							printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", adrip);
-						}
-						else//иначе:
-						{
-							printf("+++ [BanTime] Аккаунт игрока [%s] был разбанен ( IP: [%s] ) +++", akk, adrip);
-						}
-
-						ip333 = ConvIP(adrip);
-						format(string222,sizeof(string222),"bantime/%d.ini",i);
-						if(fexist(string222))
-						{
-							fremove(string222);//удаление ид-файла временного бана
-							printf("+++ [BanTime] Файл временного бана игрока [%s] был удалён ( ид [%d] ) +++", akk, i);
-						}
-					}
-					format(string222,sizeof(string222),"banlist/players/%s.ini",akk);
-					if(fexist(string222))
-					{
-						fremove(string222);//удаляем аккаунт из бан-листа
-						printf("+++ [BanTime] Аккаунт игрока [%s] был удалён из бан-листа +++", akk);
-					}
-					format(string222,sizeof(string222),"banlist/ipadr/%s.ini",ip333);
-					if(fexist(string222))
-					{
-						fremove(string222);//удаляем IP-адрес из бан-листа
-						printf("+++ [BanTime] IP-адрес [%s] был удалён из бан-листа +++", adrip);
-					}
-				}
-				else//иначе: (если аккаунт зарегистрирован в fopen)
-				{
-					new File: UserFile = fopen(string, io_read);//чтение аккаунта
-			    	new key[ 256 ] , val[ 256 ];
-			    	new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
-					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-			    		if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-			    		if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-			    		if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-			        	if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-			        	if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-			        	if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-			        	if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-			        	if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-			        	if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-			        	if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-			        	if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-			        	if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-			        	if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-			        	if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-			        	if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//			        	if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//			        	if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//			        	if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//			        	if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//			        	if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//			        	if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//			        	if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//			        	if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//			        	if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//			        	if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-			        	if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-			        	if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-                	}
-                	fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new gngakkrd = 0;
-					new string888[256];
-					format(string888,sizeof(string888),"gangs/players/%s.ini",akk);
-					if(fexist(string888))//читаем аккаунт из системы банд (если файл существует)
-					{
-						gngakkrd = 1;
-    					new f[256];
-    					format(f, 256, "gangs/players/%s.ini", akk);
-						new file = ini_openFile(f);
-						if(file >= 0)
-						{
-	    					ini_getInteger(file, "Gang", data2[14]);
-	    					ini_getInteger(file, "GangLvl", data2[15]);
-							ini_closeFile(file);
-						}
-					}
-//---------------------------------- конец -------------------------------------
-					format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", akk);//миграция аккаунта в БД, создаём запрос БД
-					db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-					format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-					format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-					format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-					format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-					format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-					format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-					format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, akk,igkey,tdreg);//IDCopy,Name,Key,TDReg
-					format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-					format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-					format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-					db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-
-					format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", akk);//создаём запрос БД
-					querydbau = db_query(playerdb, ssss);//отправляем запрос БД
-					if(db_num_rows(querydbau) == 0)//переведём результат запроса в число найденных строк в БД
-					{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
-						db_free_result(querydbau);//очищаем результат запроса БД
-						printf("+++ [BanTime] Ошибка миграции аккаунта игрока [%s] в БД !!! +++", akk);
-					}
-					else//иначе: (если аккаунт зарегистрирован в БД)
-					{
-						new buffer[32];//читаем данные из БД
-						db_get_field(querydbau, 7, adrip, 256);//IPAdr
-						db_get_field(querydbau, 20, buffer, 32); data2[12] = strval(buffer);//VIP
-						db_get_field(querydbau, 21, buffer, 32); data2[13] = strval(buffer);//Lock
-						db_free_result(querydbau);//очищаем результат запроса БД
-
-						if(data2[13] == 1 && data2[12] == 3)//если аккаунт заблокирован, и у игорока статус депортации, то:
-						{
-				    		data2[12] = 0;//убрать статус депортации
-						}
-						if(data2[13] == 0)//если аккаунт НЕ был заблокирован, то:
-						{
-				    		data2[53] = 1;//записываем в переменную проверки блокировки аккаунта 1
-						}
-						data2[13] = 0;//сброс блокировки аккаунта
-						strdel(ssss, 0, 256);//сборка RCON-команды разбана
-						strcat(ssss, "unbanip ");
-						strcat(ssss, adrip);
-						SendRconCommand(ssss);//RCON-команда разбана
-
-						format(strdln, sizeof(strdln), "UPDATE Players SET VIP = %d,Lock = %d ",data2[12],data2[13]);//создаём запрос БД
-						format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, akk);
-						db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-						if(gngakkrd == 1)
-						{
-							fremove(string888);//удаляем аккаунт из системы банд
-						}
-//---------------------------------- конец -------------------------------------
-						if(fexist(string))
-						{
-							fremove(string);//удаляем аккаунт из fopen
-						}
-
-						if(data2[53] == 1)//если переменная проверки блокировки аккаунта = 1, то:
-						{
-							printf("+++ [BanTime] Аккаунт игрока [%s] не был заблокирован +++", akk);
-							printf("+++ [BanTime] IP: [%s] был удалён из файла samp.ban +++", adrip);
-						}
-						else//иначе:
-						{
-							printf("+++ [BanTime] Аккаунт игрока [%s] был разбанен ( IP: [%s] ) +++", akk, adrip);
-						}
-
-						new ip333[128];
-						ip333 = ConvIP(adrip);
-						format(string222,sizeof(string222),"bantime/%d.ini",i);
-						if(fexist(string222))
-						{
-							fremove(string222);//удаление ид-файла временного бана
-							printf("+++ [BanTime] Файл временного бана игрока [%s] был удалён ( ид [%d] ) +++", akk, i);
-						}
-						format(string222,sizeof(string222),"banlist/players/%s.ini",akk);
-						if(fexist(string222))
-						{
-							fremove(string222);//удаляем аккаунт из бан-листа
-							printf("+++ [BanTime] Аккаунт игрока [%s] был удалён из бан-листа +++", akk);
-						}
-						format(string222,sizeof(string222),"banlist/ipadr/%s.ini",ip333);
-						if(fexist(string222))
-						{
-							fremove(string222);//удаляем IP-адрес из бан-листа
-							printf("+++ [BanTime] IP-адрес [%s] был удалён из бан-листа +++", adrip);
-						}
-					}
-				}
-#endif
 			}
 		}
 	}
@@ -37214,6 +37325,14 @@ public OneSecOnd()
 			{
 				oneminkick[i] = 0;//обнуляем переменную
 			}
+			if(scrnetcount[i] > 0)
+			{
+				scrnetcount[i]--;
+				if(scrnetcount[i] <= 0)
+				{
+					swper = 14;//не залогинился
+				}
+			}
 			GetPlayerName(i, playnam333, sizeof(playnam333));
 			new aa333[64];//доработка для использования Русских ников
 			format(aa333, sizeof(aa333), "%s", playnam333);//доработка для использования Русских ников
@@ -37556,6 +37675,7 @@ public OneSecOnd()
 #endif
 					case 12: format(string, sizeof(string), "* Игрок %s [%d] был кикнут - спавн без логирования !", aa333, i);
 					case 13: format(string, sizeof(string), "* Игрок %s [%d] был кикнут за чит (3), мешающий работе сервера !", aa333, i);
+					case 14: format(string, sizeof(string), "* Игрок %s [%d] был кикнут - не залогинился !", aa333, i);
 				}
 				print(string);
 				SendClientMessageToAll(COLOR_RED, string);
@@ -37849,7 +37969,6 @@ public OneSecOnd()
 
 public FiveSecTimer()
 {
-#if (MOD90INS == 1)
 	gettime(timecor[0], timecor[1]);
 	getdate(timecor[2], timecor[3], timecor[4]);
 	TimCor();//коррекция времени
@@ -37857,7 +37976,6 @@ public FiveSecTimer()
 	EndConD = timecor[4];
 	EndConM = timecor[3];
 	EndConY = timecor[2];
-#endif
 	for(new i = 0; i < MAX_PLAYERS; i++)
 	{
 		if(IsPlayerConnected(i))
@@ -37869,7 +37987,871 @@ public FiveSecTimer()
 			}
 		}
 	}
+	new ssss[256], impf[256];
+	new impdd = 0;
+	new impdd2 = -600;
+	while(impdd < 10)//поиск файла импорта команд
+	{
+		format(impf, 256, "data/aimpcmd/%i.txt", impdd);
+		if(fexist(impf))
+		{
+			impdd2 = impdd;
+			break;
+		}
+		impdd++;
+	}
+	if(impdd2 != -600)//если файл импорта команд был найден, то:
+	{
+		new data1[32], data2[32], data3[32], data4[32];//чтение файла импорта команд
+		new impcon[7], impcon22[2], impdatas[3][128], impdatad[128];
+		format(impf, 256, "data/aimpcmd/%i.txt", impdd2);
+		new impfile = ini_openFile(impf);
+		if(impfile >= 0)
+		{
+			impcon[0] = ini_getString(impfile, "Impservc", impdatas[0]);
+			impcon[1] = ini_getString(impfile, "ImpFSc", impdatas[1]);
+			ini_closeFile(impfile);
+		}
+		impcon22[0] = 0;//проверка файла импорта команд на корректность данных
+		impcon22[1] = 0;
+		if(impcon[0] == 0 && strlen(impdatas[0]) != 0)
+		{//если команда была прочитана, и её длина не равна нулю, то:
+			impcon22[0] = 1;
+		}
+		if(impcon[1] == 0 && strlen(impdatas[1]) != 0)
+		{//если FS-команда была прочитана, и её длина не равна нулю, то:
+			impcon22[1] = 1;
+		}
+		if(impcon22[0] == 0 && impcon22[1] == 0)
+		{
+			impcon[2] = 1;//ошибка: команды не прочитаны
+		}
+		if(impcon22[0] == 1 && impcon22[1] == 1)
+		{
+			impcon[2] = 2;//ошибка: импортировано 2 команды
+		}
+		if(impcon22[0] == 1 && impcon22[1] == 0)//если определена команда, то:
+		{
+			impcon[2] = 3;//ошибка: команда не определена
+			new idx = 0;
+			impdatad = strtok(impdatas[0], idx);
+			if(strcmp(impdatad, "/relhouses", false) == 0)
+			{
+				impcon[2] = 101;//ок, команда /relhouses
+			}
+			if(strcmp(impdatad, "/reloadbus", false) == 0)
+			{
+				impcon[2] = 102;//ок, команда /reloadbus
+			}
+			if(strcmp(impdatad, "/export", false) == 0)
+			{
+				impcon[2] = 103;//ок, команда /export
+			}
+			if(strcmp(impdatad, "/rsnp", false) == 0)
+			{
+				impcon[2] = 104;//ок, команда /rsnp
+			}
+			if(strcmp(impdatad, "/sn1del", false) == 0)
+			{
+				impcon[2] = 105;//ок, команда /sn1del
+			}
+			if(strcmp(impdatad, "/sn1add", false) == 0)
+			{
+				impcon[2] = 106;//ок, команда /sn1add
+			}
+			if(strcmp(impdatad, "/sn1chn", false) == 0)
+			{
+				impcon[2] = 107;//ок, команда /sn1chn
+			}
+			if(strcmp(impdatad, "/rsn2", false) == 0)
+			{
+				impcon[2] = 108;//ок, команда /rsn2
+			}
+		}
+		impcon[3] = 0;//если нет плагина FileFunctions
+		if(impcon22[0] == 0 && impcon22[1] == 1)//если определена FS-команда, то:
+		{
+			new idx = 0;
+			data1 = strtok(impdatas[1], idx);
+			data2 = strtok(impdatas[1], idx);
+			data3 = strtok(impdatas[1], idx);
+			if(strcmp(data1, "/rcon", false) == 0)
+			{
+				impcon[2] = 5;//ошибка: FS-команда не определена
+				if(strcmp(data2, "loadfs", false) == 0)
+				{
+					impcon[2] = 201;//ок, FS-команда loadfs
+				}
+				if(strcmp(data2, "unloadfs", false) == 0)
+				{
+					impcon[2] = 202;//ок, FS-команда unloadfs
+				}
+				if(strcmp(data2, "reloadfs", false) == 0)
+				{
+					impcon[2] = 203;//ок, FS-команда reloadfs
+				}
+				if(strlen(data3) == 0)
+				{
+					impcon[2] = 6;//ошибка: в FS-команде нет имени фильтрскрипта
+				}
+			}
+			else
+			{
+				impcon[2] = 4;//ошибка: в FS-команде нет префикса /rcon
+			}
+		}
+		if(impcon[2] == 101)//ок, команда /relhouses
+		{
+			new file[HOUSEFILE_LENGTH], tmp;
+			Loop(i, MAX_PLAYERS)
+			{
+				if(IsPlayerConnected(i) && !IsPlayerNPC(i))
+		 		{
+		  			tmp = GetPVarInt(i, "LastHouseCP");
+					format(file, sizeof(file), FILEPATH, tmp);
+		  			if(!strcmp(GetHouseOwner(tmp), RealName[i], CASE_SENSETIVE) && GetPVarInt(i, "IsInHouse") == 1 && dini_Exists(file))
+					{
+		  				dini_IntSet(file, "QuitInHouse", 1);
+			    		#if defined GH_HOUSECARS
+			    			SaveHouseCar(tmp);
+		       			#endif
+					}
+				}
+			}
+			UnloadHouses(); // Выгрузка домов (также разгружает дом автомобили)
+			SetTimer("rmtrelhoyses1", 500, 0);
+		}
+		if(impcon[2] == 102)//ок, команда /reloadbus
+		{
+			UnloadBusSystem();//выгрузка системы бизнесов
+			SetTimer("rmtreloadbus1", 500, 0);
+		}
+		impcon[4] = 0;//маркер ошибок: 1 - чтение сетевых экранов, 2 - чтение файлов с никами
+		if(impcon[2] == 103)//ок, команда /export
+		{
+			new idx = 0;
+			data1 = strtok(impdatas[0], idx);
+			data2 = strtok(impdatas[0], idx);
+			if(strlen(data2) >= 1)
+			{
+				format(impdatad, sizeof(impdatad), "%s", data2);//читаем параметр (имя аккаунта)
+			}
+			else
+			{
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					impcon[4] = 3;//ошибка: команда /export без параметра
+				}
+			}
+			if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+			{
+				strdel(dAccName[MAX_PLAYERS - 1], 0, 64);
+				strcat(dAccName[MAX_PLAYERS - 1], impdatad);
+				if(AccDataLoadUn(MAX_PLAYERS - 1) == 1)//чтение аккаунта
+				{//если аккаунт существует, то:
+					new locstr[128];
+					format(locstr, sizeof(locstr), "players/export/%s.ini", impdatad);
+					if(fexist(locstr))//если аккаунт уже был экспортирован, то:
+					{
+						fremove(locstr);//удаляем старый экспортированный аккаунт
+					}
+					new File: hFile = fopen(locstr, io_write);//запись экспортированного аккаунта
+					if (hFile)
+					{
+						new var[128];
+						format(var, 128, "Key=%s\n",admData[MAX_PLAYERS - 1][dKey]);fwrite(hFile, var);
+						format(var, 128, "TDReg=%s\n",admData[MAX_PLAYERS - 1][dTDReg]);fwrite(hFile, var);
+						format(var, 128, "DEndConD=%d\n",admData[MAX_PLAYERS - 1][dEndConD]);fwrite(hFile, var);
+						format(var, 128, "DEndConM=%d\n",admData[MAX_PLAYERS - 1][dEndConM]);fwrite(hFile, var);
+						format(var, 128, "DEndConY=%d\n",admData[MAX_PLAYERS - 1][dEndConY]);fwrite(hFile, var);
+						format(var, 128, "IPAdr=%s\n",admData[MAX_PLAYERS - 1][dIPAdr]);fwrite(hFile, var);
+						format(var, 128, "MinLog=%d\n",admData[MAX_PLAYERS - 1][dMinlog]);fwrite(hFile, var);
+						format(var, 128, "AdminLevel=%d\n",admData[MAX_PLAYERS - 1][dAdmin]);fwrite(hFile, var);
+						format(var, 128, "AdminShadow=%d\n",admData[MAX_PLAYERS - 1][dAdmshad]);fwrite(hFile, var);
+						format(var, 128, "AdminLive=%d\n",admData[MAX_PLAYERS - 1][dAdmlive]);fwrite(hFile, var);
+						format(var, 128, "Registered=%d\n",admData[MAX_PLAYERS - 1][dReg]);fwrite(hFile, var);
+						format(var, 128, "Prison=%d\n",admData[MAX_PLAYERS - 1][dPrison]);fwrite(hFile, var);
+						format(var, 128, "Prisonsec=%d\n",admData[MAX_PLAYERS - 1][dPrisonsec]);fwrite(hFile, var);
+						format(var, 128, "Muted=%d\n",admData[MAX_PLAYERS - 1][dMuted]);fwrite(hFile, var);
+						format(var, 128, "Mutedsec=%d\n",admData[MAX_PLAYERS - 1][dMutedsec]);fwrite(hFile, var);
+						format(var, 128, "Money=%d\n",admData[MAX_PLAYERS - 1][dMoney]);fwrite(hFile, var);
+						format(var, 128, "Kills=%d\n",admData[MAX_PLAYERS - 1][dKills]);fwrite(hFile, var);
+						format(var, 128, "Deaths=%d\n",admData[MAX_PLAYERS - 1][dDeaths]);fwrite(hFile, var);
+						format(var, 128, "VIP=%d\n",admData[MAX_PLAYERS - 1][dVIP]);fwrite(hFile, var);
+						format(var, 128, "Lock=%d\n",admData[MAX_PLAYERS - 1][dLock]);fwrite(hFile, var);
+						format(var, 128, "Gang=%d\n",admData[MAX_PLAYERS - 1][dGang]);fwrite(hFile, var);
+						format(var, 128, "GangLvl=%d\n",admData[MAX_PLAYERS - 1][dGangLvl]);fwrite(hFile, var);
+//						format(var, 128, "PISTOL=%d\n",admData[MAX_PLAYERS - 1][dPISTOL]);fwrite(hFile, var);
+//						format(var, 128, "PISTOL_SILENCED=%d\n",admData[MAX_PLAYERS - 1][dPISTOL_SILENCED]);fwrite(hFile, var);
+//						format(var, 128, "DESERT_EAGLE=%d\n",admData[MAX_PLAYERS - 1][dDESERT_EAGLE]);fwrite(hFile, var);
+//						format(var, 128, "SHOTGUN=%d\n",admData[MAX_PLAYERS - 1][dSHOTGUN]);fwrite(hFile, var);
+//						format(var, 128, "SAWNOFF_SHOTGUN=%d\n",admData[MAX_PLAYERS - 1][dSAWNOFF_SHOTGUN]);fwrite(hFile, var);
+//						format(var, 128, "SPAS12_SHOTGUN=%d\n",admData[MAX_PLAYERS - 1][dSPAS12_SHOTGUN]);fwrite(hFile, var);
+//						format(var, 128, "MICRO_UZI=%d\n",admData[MAX_PLAYERS - 1][dMICRO_UZI]);fwrite(hFile, var);
+//						format(var, 128, "MP5=%d\n",admData[MAX_PLAYERS - 1][dMP5]);fwrite(hFile, var);
+//						format(var, 128, "AK47=%d\n",admData[MAX_PLAYERS - 1][dAK47]);fwrite(hFile, var);
+//						format(var, 128, "M4=%d\n",admData[MAX_PLAYERS - 1][dM4]);fwrite(hFile, var);
+//						format(var, 128, "SNIPERRIFLE=%d\n",admData[MAX_PLAYERS - 1][pSNIPERRIFLE]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot0=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot0]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot1=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot1]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot2=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot2]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot3=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot3]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot4=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot4]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot5=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot5]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot6=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot6]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot7=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot6]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot8=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot8]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot9=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot9]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot10=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot10]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot11=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot11]);fwrite(hFile, var);
+						format(var, 128, "Weapon_slot12=%d\n",admData[MAX_PLAYERS - 1][dWeapon_slot12]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot0=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot0]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot1=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot1]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot2=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot2]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot3=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot3]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot4=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot4]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot5=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot5]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot6=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot6]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot7=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot7]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot8=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot8]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot9=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot9]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot10=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot10]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot11=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot11]);fwrite(hFile, var);
+						format(var, 128, "Ammo_slot12=%d\n",admData[MAX_PLAYERS - 1][dAmmo_slot12]);fwrite(hFile, var);
+						format(var, 128, "Pass_data1=%s\n",admData[MAX_PLAYERS - 1][dPass_data1]);fwrite(hFile, var);
+						format(var, 128, "Pass_inout1=%s\n",admData[MAX_PLAYERS - 1][dPass_inout1]);fwrite(hFile, var);
+						format(var, 128, "Pass_ver1=%s\n",admData[MAX_PLAYERS - 1][dPass_ver1]);fwrite(hFile, var);
+						format(var, 128, "Pass_count1=%d\n",admData[MAX_PLAYERS - 1][dPass_count1]);fwrite(hFile, var);
+						format(var, 128, "Pass_data2=%s\n",admData[MAX_PLAYERS - 1][dPass_data2]);fwrite(hFile, var);
+						format(var, 128, "Pass_inout2=%s\n",admData[MAX_PLAYERS - 1][dPass_inout2]);fwrite(hFile, var);
+						format(var, 128, "Pass_ver2=%s\n",admData[MAX_PLAYERS - 1][dPass_ver2]);fwrite(hFile, var);
+						format(var, 128, "Pass_count2=%d\n",admData[MAX_PLAYERS - 1][dPass_count2]);fwrite(hFile, var);
+						format(var, 128, "Pass_data3=%s\n",admData[MAX_PLAYERS - 1][dPass_data3]);fwrite(hFile, var);
+						format(var, 128, "Pass_inout3=%s\n",admData[MAX_PLAYERS - 1][dPass_inout3]);fwrite(hFile, var);
+						format(var, 128, "Pass_ver3=%s\n",admData[MAX_PLAYERS - 1][dPass_ver3]);fwrite(hFile, var);
+						format(var, 128, "Pass_count3=%d\n",admData[MAX_PLAYERS - 1][dPass_count3]);fwrite(hFile, var);
+						format(var, 128, "Pass_data4=%s\n",admData[MAX_PLAYERS - 1][dPass_data4]);fwrite(hFile, var);
+						format(var, 128, "Pass_inout4=%s\n",admData[MAX_PLAYERS - 1][dPass_inout4]);fwrite(hFile, var);
+						format(var, 128, "Pass_ver4=%s\n",admData[MAX_PLAYERS - 1][dPass_ver4]);fwrite(hFile, var);
+						format(var, 128, "Pass_count4=%d\n",admData[MAX_PLAYERS - 1][dPass_count4]);fwrite(hFile, var);
+						format(var, 128, "PassMode=%d\n",admData[MAX_PLAYERS - 1][dPassMode]);fwrite(hFile, var);
+						format(var, 128, "PassDel=%d\n",admData[MAX_PLAYERS - 1][dPassDel]);fwrite(hFile, var);
+						format(var, 128, "PassLock=%d\n",admData[MAX_PLAYERS - 1][dPassLock]);fwrite(hFile, var);
+						format(var, 128, "PassError=%d\n",admData[MAX_PLAYERS - 1][dPassError]);fwrite(hFile, var);
+						fclose(hFile);
+					}
+					if(!fexist(locstr))//если аккаунт НЕ был экспортирован, то:
+					{
+						if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+						{
+							impcon[4] = 5;//ошибка: команда /export , не создан путь: scriptfiles/players/export/
+						}
+					}
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						format(ssss, 256, " **** Удалённое экспортирование аккаунта игрока [%s] .", impdatad);
+						print(ssss);
+					}
+				}
+				else//если аккаунта НЕ существует, то:
+				{
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						impcon[4] = 4;//ошибка: команда /export , аккаунта не существует
+					}
+				}
+			}
+		}
+		if(impcon[2] == 104)//ок, команда /rsnp
+		{
+		    new file, f[128], ssss22[64];//чтение per-файла
+			format(f, sizeof(f), "data/scrnet1/_scrnetper.ini");
+			if(!fexist(f))//если файла не существует, то:
+			{//создаём файл
+				file = ini_createFile(f);
+				if(file >= 0)
+				{
+					for(new i = 0; i < 20; i++)
+					{
+						format(ssss22, 64, "Name%03d", i);
+					    ini_setString(file, ssss22, "");//записываем в файл пустую строку (за место ника)
+					}
+					ini_closeFile(file);
+				}
+			}
+			file = ini_openFile(f);//читаем файл
+			if(file >= 0)
+			{
+				for(new i = 0; i < 20; i++)
+				{
+					strdel(scrnetper[i], 0, 64);
+					format(ssss22, 64, "Name%03d", i);
+				    ini_getString(file, ssss22, scrnetper[i]);
+					if(strlen(scrnetper[i]) == 0)//если прочитана пустая строка (за место ника), то:
+					{
+						strcat(scrnetper[i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+					}
+					else//иначе, если прочитана НЕ пустая строка, то:
+					{
+						if(strlen(scrnetper[i]) > 25 || InpNameControl(scrnetper[i]) == 0)//если ник содержит ошибки, то:
+						{
+							if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+							{
+								impcon[5] = i;//сохраняем номер слота с ошибкой
+								impcon[4] = 2;//устанавливаем маркер ошибки в 2 (чтение per-файла)
+							}
+							strdel(scrnetper[i], 0, 64);//очищаем слот
+							strcat(scrnetper[i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+						}
+					}
+				}
+				ini_closeFile(file);
+			}
+			format(ssss, 256, " **** Удалённая перезагрузка per-файла сетевых экранов.");
+			print(ssss);
+			SendAdminMessage22(COLOR_YELLOW, ssss, 1, 3);
+		}
+		if(impcon[2] == 105)//ок, команда /sn1del
+		{
+			new idx = 0;
+			data1 = strtok(impdatas[0], idx);
+			data2 = strtok(impdatas[0], idx);
+			if(strlen(data2) >= 1)
+			{
+				impcon[5] = strval(data2);//читаем параметр (номер IP-строки)
+			}
+			else
+			{
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					impcon[4] = 3;//ошибка: команда /sn1del без параметра
+				}
+			}
+			if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+			{
+				new strdln[1000], locdata1;
+				format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (NumSt = %d AND Active = 1)", impcon[5]);//создаём запрос БД
+				qscrnet1db[MAX_PLAYERS - 1] = db_query(scrnet1db, strdln);//отправляем запрос БД
+				locdata1 = db_num_rows(qscrnet1db[MAX_PLAYERS - 1]);//переведём результат запроса в число найденных строк в БД
+				db_free_result(qscrnet1db[MAX_PLAYERS - 1]);//очищаем результат запроса БД
+				if(locdata1 == 0)//если строка НЕ найдена в БД, то:
+				{
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						impcon[4] = 4;//ошибка: команда /sn1del , IP-строка в БД не найдена
+					}
+				}
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					ScrNet1Save((MAX_PLAYERS - 1), 3, impcon[5]);//запись изменённой строки в БД (удаление записи из строки)
+					format(ssss, 256, " **** Удалённое удаление группы IP-адресов из IP-строки %d сетевого экрана 1 .", impcon[5]);
+					print(ssss);
+					SendAdminMessage22(COLOR_RED, ssss, 1, 3);
+				}
+			}
+		}
+		if(impcon[2] == 106)//ок, команда /sn1add
+		{
+			new idx = 0;
+			data1 = strtok(impdatas[0], idx);
+			data2 = strtok(impdatas[0], idx);
+			data3 = strtok(impdatas[0], idx);
+			data4 = strtok(impdatas[0], idx);
+			if(strlen(data2) >= 1)
+			{
+				if(strlen(data3) >= 1)
+				{
+					if(strlen(data4) >= 1)
+					{
+						format(impdatad, sizeof(impdatad), "%s %s %s", data2, data3, data4);//читаем параметры (группу IP-адресов)
+					}
+					else
+					{
+						if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+						{
+							impcon[4] = 3;//ошибка: команда /sn1add без одного из параметров
+						}
+					}
+				}
+				else
+				{
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						impcon[4] = 3;//ошибка: команда /sn1add без одного из параметров
+					}
+				}
+			}
+			else
+			{
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					impcon[4] = 3;//ошибка: команда /sn1add без одного из параметров
+				}
+			}
+			if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+			{
+				if(ScrNetCC((MAX_PLAYERS - 1), impdatad, 1, 0) == 0)
+				{//проверка группы IP-адресов на ошибки и посторонние символы
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						impcon[4] = 4;//ошибка: команда /sn1add , неверная запись группы IP-адресов
+					}
+				}
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					new strdln[2000], locdata1;
+					format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (Active = 1 ");//создаём запрос БД
+					format(strdln, sizeof(strdln), "%sAND %d = SN1b1 AND %d = SN1b2 AND %d = SN1b3 AND %d = SN1b4 ", strdln, scrnet1b[0][MAX_PLAYERS - 1], scrnet1b[1][MAX_PLAYERS - 1], scrnet1b[2][MAX_PLAYERS - 1], scrnet1b[3][MAX_PLAYERS - 1]);
+					format(strdln, sizeof(strdln), "%sAND %d = SN1e1 AND %d = SN1e2 AND %d = SN1e3 AND %d = SN1e4)", strdln, scrnet1e[0][MAX_PLAYERS - 1], scrnet1e[1][MAX_PLAYERS - 1], scrnet1e[2][MAX_PLAYERS - 1], scrnet1e[3][MAX_PLAYERS - 1]);
+					qscrnet1db[MAX_PLAYERS - 1] = db_query(scrnet1db, strdln);//отправляем запрос БД
+					locdata1 = db_num_rows(qscrnet1db[MAX_PLAYERS - 1]);//переведём результат запроса в число найденных строк в БД
+					db_free_result(qscrnet1db[MAX_PLAYERS - 1]);//очищаем результат запроса БД
+					if(locdata1 >= 1)//если была найдена хотя бы 1 строка с совпадающеё группой IP-адресов в БД, то:
+					{
+						if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+						{
+							impcon[4] = 5;//ошибка: команда /sn1add , добавляемая группа IP-адресов - уже имеется
+						}
+					}
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (IDCopy = 1 AND Active = 0)");//создаём запрос БД
+						qscrnet1db[MAX_PLAYERS - 1] = db_query(scrnet1db, strdln);//отправляем запрос БД
+						locdata1 = db_num_rows(qscrnet1db[MAX_PLAYERS - 1]);//переведём результат запроса в число найденных строк в БД
+						if(locdata1 >= 1)//если была найдена хотя бы 1 строка с удалённой записью в БД, то:
+						{
+							new buffer[64];
+							db_get_field(qscrnet1db[MAX_PLAYERS - 1], 1, buffer, 64);//читаем из первой найденой записи БД номер строки
+							db_free_result(qscrnet1db[MAX_PLAYERS - 1]);//очищаем результат запроса БД
+							locdata1 = strval(buffer);
+							ScrNet1Save(MAX_PLAYERS - 1, 2, locdata1);//запись изменённой строки в БД (замена старой строки новыми данными)
+						}
+						else//иначе, если строк с удалённой записью НЕ найдено в БД, то:
+						{
+							db_free_result(qscrnet1db[MAX_PLAYERS - 1]);//очищаем результат запроса БД
+							format(strdln, sizeof(strdln), "SELECT * FROM _scrnet1 WHERE (IDCopy = 1)");//создаём запрос БД
+							qscrnet1db[MAX_PLAYERS - 1] = db_query(scrnet1db, strdln);//отправляем запрос БД
+							locdata1 = db_num_rows(qscrnet1db[MAX_PLAYERS - 1]);//переведём результат запроса в число найденных строк в БД
+							db_free_result(qscrnet1db[MAX_PLAYERS - 1]);//очищаем результат запроса БД
+							ScrNet1Save(MAX_PLAYERS - 1, 1, locdata1);//запись изменённой строки в БД (добавление новой строки)
+						}
+						format(ssss, 256, " **** Удалённое добавление группы IP-адресов [%s] в IP-строку %d сетевого экрана 1 .", impdatad, locdata1);
+						print(ssss);
+						SendAdminMessage22(COLOR_YELLOW, ssss, 1, 3);
+					}
+				}
+			}
+		}
+		if(impcon[2] == 107)//ок, команда /sn1chn
+		{
+		    new file, f[128], locmark, fdop[128];
+			format(f, sizeof(f), "data/scrnet1/_scrnet1mark.ini");
+			if(!fexist(f))//если файла не существует, то:
+			{
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					impcon[4] = 3;//ошибка: команда /sn1chn , нет файла-указателя: _scrnet1mark
+				}
+			}
+			if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+			{
+				file = ini_openFile(f);//читаем файл
+				if(file >= 0)
+				{
+					ini_getInteger(file, "Mark", locmark);//читаем указатель - на текущую БД сетевого экрана 1
+					ini_closeFile(file);
+				}
+				if(locmark < 1 || locmark > 2)//если в файле-указателе - неверные данные, то:
+				{
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						impcon[4] = 4;//ошибка: команда /sn1chn , неверные данные в файле-указателе: _scrnet1mark
+					}
+				}
+				if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+				{
+					if(locmark == 1)//меняем указатель - на текущую БД сетевого экрана 1 - на другой
+					{
+						locmark = 2;
+					}
+					else
+					{
+						locmark = 1;
+					}
+					format(fdop, sizeof(fdop), "data/scrnet1/_scrnet1%d.db", locmark);
+					if(!fexist(fdop))//если файла не существует, то:
+					{
+						if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+						{
+							impcon[5] = locmark;//сохраняем номер целевой БД
+							impcon[4] = 5;//ошибка: команда /sn1chn , нет файла целевой БД: _scrnet1x
+						}
+					}
+					if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+					{
+						scrnet1mark = locmark;
+						file = ini_openFile(f);//записываем файл
+						if(file >= 0)
+						{
+							ini_setInteger(file, "Mark", scrnet1mark);//записываем указатель - на текущую БД сетевого экрана 1
+							ini_closeFile(file);
+						}
+						conopen222 = 0;//отключение коннекта к серверу
+						db_close(scrnet1db);//отключаем базу данных сетевого экрана 1 от сервера
+						SetTimer("rmtsn1chn1", 1000, 0);
+					}
+				}
+			}
+		}
+		if(impcon[2] == 108)//ок, команда /rsn2
+		{
+		    new file, f[128], ssss22[64], strload[128];//чтение сетевого экрана 2
+		    format(f, sizeof(f), "data/scrnet2/_scrnet2.ini");
+			if(!fexist(f))//если файла не существует, то:
+			{//создаём файл
+				file = ini_createFile(f);
+				if(file >= 0)
+				{
+					for(new i = 0; i < 200; i++)
+					{
+						format(ssss22, 64, "ScrNet2%03d", i);
+					    ini_setString(file, ssss22, "");//записываем в файл пустую строку (за место IP-адресов)
+					}
+					ini_closeFile(file);
+				}
+			}
+			file = ini_openFile(f);//читаем файл
+			if(file >= 0)
+			{
+				for(new i = 0; i < 200; i++)
+				{
+					strdel(strload, 0, 128);
+					format(ssss22, 64, "ScrNet2%03d", i);
+				    ini_getString(file, ssss22, strload);
+					if(ScrNetCC(0, strload, 2, i) == 0)
+					{//если IP-адреса содержат ошибки, или посторонние символы, то:
+						if(impcon[4] == 0)//если маркер ошибки НЕ был установлен, то:
+						{
+							impcon[5] = i;//сохраняем номер слота с ошибкой
+							impcon[4] = 1;//устанавливаем маркер ошибки в 1 (чтение сетевего экрана)
+						}
+						for(new j = 0; j < 4; j++)
+						{//записываем в слот несуществующие IP-адреса (256.256.256.256 - -1.-1.-1.-1)
+							scrnet2b[j][i] = 256;
+							scrnet2e[j][i] = -1;
+						}
+						scrnet2b123[i] = -1;
+						scrnet2e123[i] = -1;
+					}
+				}
+				ini_closeFile(file);
+			}
+			format(ssss, 256, " **** Удалённая перезагрузка сетевого экрана 2 .");
+			print(ssss);
+			SendAdminMessage22(COLOR_YELLOW, ssss, 1, 3);
+		}
+		if(impcon[2] == 201 || impcon[2] == 202 || impcon[2] == 203)
+		{
+#if (MOD22INS == 0)
+			format(ssss, 256, "%s %s", data2, data3);
+			SendRconCommand(ssss);//отправка RCON-команды
+#endif
+#if (MOD22INS == 1)
+			impcon[3] = 1;//если есть плагин FileFunctions, и нет фильтрскрипта
+			format(ssss, 256, "filterscripts/%s.amx", data3);
+			if(fileExists(ssss))
+			{
+				impcon[3] = 2;//если есть плагин FileFunctions, и есть фильтрскрипт
+				format(ssss, 256, "%s %s", data2, data3);
+				SendRconCommand(ssss);//отправка RCON-команды
+			}
+#endif
+		}
+		if(impcon[2] == 1)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда не прочитана");
+		}
+		if(impcon[2] == 2)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: импортировано 2 команды");
+		}
+		if(impcon[2] == 3)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда не определена");
+		}
+		if(impcon[2] == 4)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: в FS-команде нет префикса /rcon");
+		}
+		if(impcon[2] == 5)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: FS-команда не определена");
+		}
+		if(impcon[2] == 6)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: в FS-команде нет имени фильтрскрипта");
+		}
+		if(impcon[2] == 101)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /relhouses");
+		}
+		if(impcon[2] == 102)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /reloadbus");
+		}
+		if(impcon[4] == 0 && impcon[2] == 103)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /export");
+		}
+		if(impcon[4] == 3 && impcon[2] == 103)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /export без параметра");
+		}
+		if(impcon[4] == 4 && impcon[2] == 103)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /export , аккаунта не существует");
+		}
+		if(impcon[4] == 5 && impcon[2] == 103)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /export , не создан путь: scriptfiles/players/export/");
+		}
+		if(impcon[4] == 0 && impcon[2] == 104)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /rsnp");
+		}
+		if(impcon[4] == 2 && impcon[2] == 104)
+		{
+			format(ssss, 256, "ошибка: команда /rsnp , файл _scrnetper строка Name%03d", impcon[5]);
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], ssss);
+		}
+		if(impcon[4] == 0 && impcon[2] == 105)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /sn1del");
+		}
+		if(impcon[4] == 3 && impcon[2] == 105)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1del без параметра");
+		}
+		if(impcon[4] == 4 && impcon[2] == 105)
+		{
+			format(ssss, 256, "ошибка: команда /sn1del , IP-строка %d в БД не найдена", impcon[5]);
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], ssss);
+		}
+		if(impcon[4] == 0 && impcon[2] == 106)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /sn1add");
+		}
+		if(impcon[4] == 3 && impcon[2] == 106)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1add без одного из параметров");
+		}
+		if(impcon[4] == 4 && impcon[2] == 106)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1add , неверная запись группы IP-адресов");
+		}
+		if(impcon[4] == 5 && impcon[2] == 106)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1add , добавляемая группа IP-адресов - уже имеется");
+		}
+		if(impcon[4] == 0 && impcon[2] == 107)
+		{
+			format(ssss, 256, "ок, команда /sn1chn , текущая БД сетевого экрана 1 : _scrnet1%d", scrnet1mark);
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], ssss);
+		}
+		if(impcon[4] == 3 && impcon[2] == 107)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1chn , нет файла-указателя: _scrnet1mark");
+		}
+		if(impcon[4] == 4 && impcon[2] == 107)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ошибка: команда /sn1chn , неверные данные в файле-указателе: _scrnet1mark");
+		}
+		if(impcon[4] == 5 && impcon[2] == 107)
+		{
+			format(ssss, 256, "ошибка: команда /sn1chn , нет файла целевой БД: _scrnet1%d", impcon[5]);
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], ssss);
+		}
+		if(impcon[4] == 0 && impcon[2] == 108)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, команда /rsn2");
+		}
+		if(impcon[4] == 1 && impcon[2] == 108)
+		{
+			format(ssss, 256, "ошибка: команда /rsn2 , файл _scrnet2 строка ScrNet2%03d", impcon[5]);
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], ssss);
+		}
+		if(impcon[2] == 201)
+		{
+			printf(" **** Удалённая загрузка фильтрскрипта %s .", data3);
+		}
+		if(impcon[2] == 202)
+		{
+			printf(" **** Удалённая выгрузка фильтрскрипта %s .", data3);
+		}
+		if(impcon[2] == 203)
+		{
+			printf(" **** Удалённая перезагрузка фильтрскрипта %s .", data3);
+		}
+		if(impcon[3] == 0 && impcon[2] == 201)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда loadfs");
+		}
+		if(impcon[3] == 0 && impcon[2] == 202)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда unloadfs");
+		}
+		if(impcon[3] == 0 && impcon[2] == 203)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда reloadfs");
+		}
+		if(impcon[3] == 1 && impcon[2] == 201)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда loadfs , FS не найден");
+		}
+		if(impcon[3] == 1 && impcon[2] == 202)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда unloadfs , FS не найден");
+		}
+		if(impcon[3] == 1 && impcon[2] == 203)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда reloadfs , FS не найден");
+		}
+		if(impcon[3] == 2 && impcon[2] == 201)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда loadfs , FS загружен");
+		}
+		if(impcon[3] == 2 && impcon[2] == 202)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда unloadfs , FS выгружен");
+		}
+		if(impcon[3] == 2 && impcon[2] == 203)
+		{
+			strdel(impdatas[2], 0, 128);
+			strcat(impdatas[2], "ок, FS-команда reloadfs , FS перезагружен");
+		}
+		format(impf, 256, "data/aimpcmd/%i-ret.txt", impdd2);//создание файла-ответа
+		if(fexist(impf))//если файл-ответа уже есть, то:
+		{
+			fremove(impf);//удаляем файл-ответа
+		}
+		impfile = ini_createFile(impf);//создаём файла-ответа
+		if(impfile >= 0)
+		{
+			ini_setString(impfile, "ret", impdatas[2]);
+			ini_closeFile(impfile);
+		}
+		format(impf, 256, "data/aimpcmd/%i.txt", impdd2);//удаление файла импорта команд
+		if(fexist(impf))
+		{
+			fremove(impf);
+		}
+	}
 	return 1;
+}
+
+forward rmtrelhoyses1();
+public rmtrelhoyses1()
+{
+	print(" **** Удалённая перезагрузка системы домов.");
+	SendClientMessageToAll(COLOR_RED, " **** Удалённая перезагрузка системы домов.");
+	SetTimer("rmtrelhoyses2", 500, 0);
+    return 1;
+}
+
+forward rmtrelhoyses2();
+public rmtrelhoyses2()
+{
+	for(new i = 0; i < MAX_PLAYERS; i++)//обнуление массива блокировок диалога ввода пароля
+	{
+		lockpas[i] = 0;
+	}
+
+    LoadHouses(); // Загрузка фс дома
+    Loop(i, MAX_PLAYERS)
+    {
+        if(IsPlayerConnected(i) && !IsPlayerNPC(i))
+        {
+            SetPVarInt(i, "HousePrevTime", 0);
+        }
+    }
+    return 1;
+}
+
+forward rmtreloadbus1();
+public rmtreloadbus1()
+{
+	print(" **** Удалённая перезагрузка системы бизнесов.");
+	SendClientMessageToAll(COLOR_RED, " **** Удалённая перезагрузка системы бизнесов.");
+	SetTimer("rmtreloadbus2", 500, 0);
+    return 1;
+}
+
+forward rmtreloadbus2();
+public rmtreloadbus2()
+{
+	LoadBusSystem();//загрузка системы бизнесов
+    return 1;
+}
+
+forward rmtsn1chn1();
+public rmtsn1chn1()
+{
+	if(scrnet1mark == 1)//если указатель = 1, то: текущая БД: _scrnet11.db
+	{
+		scrnet1db = db_open("data/scrnet1/_scrnet11.db");//подключаем базу данных сетевого экрана 1 к серверу
+	}
+	if(scrnet1mark == 2)//если указатель = 2, то: текущая БД: _scrnet12.db
+	{
+		scrnet1db = db_open("data/scrnet1/_scrnet12.db");//подключаем базу данных сетевого экрана 1 к серверу
+	}
+	new ssss[256];
+	format(ssss, 256, " **** Удалённая замена текущей БД сетевого экрана 1 на: _scrnet1%d .", scrnet1mark);
+	print(ssss);
+	SendAdminMessage22(COLOR_YELLOW, ssss, 1, 3);
+	SetTimer("rmtsn1chn2", 1000, 0);
+    return 1;
+}
+
+forward rmtsn1chn2();
+public rmtsn1chn2()
+{
+	conopen222 = 1;//подключение коннекта к серверу
+    return 1;
 }
 
 public ShowStats(playerid,targetid)
@@ -38039,6 +39021,36 @@ public ShowStats(playerid,targetid)
 		GHead[per3],GangLvl[targetid],GPlayers[per3],per3,per4);
 		SendClientMessage(playerid, COLOR_GRAD1,coordsstring);
 
+		if((PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[targetid][pAdmin] <= 3) ||
+		PlayerInfo[playerid][pAdmin] >= 4)
+		{
+#if (MOD4DINS >= 1)
+			if((PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[targetid][pAdmin] == 0) ||
+			(PlayerInfo[playerid][pAdmin] <= 3 && playerid == targetid))
+			{
+				FnPrnPass(3, playerid, targetid);//печать для админа, данные статистики он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+			}
+			if(PlayerInfo[playerid][pAdmin] <= 3 && PlayerInfo[targetid][pAdmin] >= 1 && playerid != targetid)
+			{
+				FnPrnPass(4, playerid, targetid);//печать для админа, данные статистики он-лайн админа [pPass_ver1]
+			}
+			if(PlayerInfo[playerid][pAdmin] >= 4)
+			{
+				FnPrnPass(3, playerid, targetid);//печать для админа, данные статистики он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+			}
+#endif
+#if (MOD4DINS == 1)
+			format(coordsstring, sizeof(coordsstring)," Паспорт 1 : Всего очисток: [%d] Ошибок входных данных: [%d] (из 4-х)",
+			PlayerInfo[targetid][pPassDel],PlayerInfo[targetid][pPassError]);
+			SendClientMessage(playerid, COLOR_GRAD1,coordsstring);
+#endif
+#if (MOD4DINS >= 2 && MOD4DINS <= 4)
+			format(coordsstring, sizeof(coordsstring)," Паспорта : Всего очисток: [%d] Ошибок входных данных: [%d] (из 4-х)",
+			PlayerInfo[targetid][pPassDel],PlayerInfo[targetid][pPassError]);
+			SendClientMessage(playerid, COLOR_GRAD1,coordsstring);
+#endif
+		}
+
 		SendClientMessage(playerid, COLOR_GREEN," _______________________________________");
 	}
 	return 1;
@@ -38078,7 +39090,7 @@ public MinServ()//таймер минут на сервере
 	}
 
 //------------------------------ BusSystem -------------------------------------
-	new para1;
+	new para1, file, f[256];
 	for(new i; i < BUS_MAX; i++)//цикл для всех бизнесов
 	{
 		if(buscount[i] == 1 && busidplay[i] != -600)//если бизнес существует,
@@ -38086,10 +39098,27 @@ public MinServ()//таймер минут на сервере
 			if(IsPlayerConnected(busidplay[i]) && playspabs[busidplay[i]] == 1 &&
 			strcmp(RealName[busidplay[i]], busplayname[i], false) == 0)//дополнительная проверка на коннект игрока,
 			{//спавн игрока, и его ник (в случае некорректного отключения от скрипта, или если игрок не заспавнился)
-				busmoney[i]++;//прибавляем счётчик минут бизнеса
-				if(busmoney[i] >= busminute[i])//если счётчик минут больше или равен минуте дохода от бизнеса, то:
+				busmoney[i]--;//счётчик минут бизнеса -1
+				if(busmoney[i] > 0)//если счётчик минут бизнеса больше нуля, то:
 				{
-					busmoney[i] = 0;//обнуляем счётчик минут бизнеса
+					format(f, 256, "bussystem/%i.ini", i);//записываем изменения в файл
+					file = ini_openFile(f);
+					if(file >= 0)
+					{
+				    	ini_setInteger(file, "Count", busmoney[i]);
+						ini_closeFile(file);
+					}
+				}
+				if(busmoney[i] <= 0)//если счётчик минут бизнеса меньше или равен нулю, то:
+				{
+					busmoney[i] = busminute[i];//копируем в счётчик минут бизнеса - минуты бизнеса
+					format(f, 256, "bussystem/%i.ini", i);//записываем изменения в файл
+					file = ini_openFile(f);
+					if(file >= 0)
+					{
+				    	ini_setInteger(file, "Count", busmoney[i]);
+						ini_closeFile(file);
+					}
 					para1 = GetPVarInt(busidplay[i], "PlMon");
 					SetPVarInt(busidplay[i], "PlMon", GetPVarInt(busidplay[i], "PlMon") + busincome[i]);//прибавление дохода к счёту игрока
 					new string[256];
@@ -38297,11 +39326,6 @@ public LoadBusSystem()//загрузка системы бизнесов
     new file, f[256];//чтение всех бизнесов
 	for(new i; i < BUS_MAX; i++)
 	{
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-		busvw[i] = 0;
-		busint[i] = 0;
-//---------------------------------- конец -------------------------------------
 		PickupID[i] = -600;//задаём несуществующий ID-номер пикапа для бизнеса
 	    format(f, 256, "bussystem/%i.ini", i);
 		file = ini_openFile(f);
@@ -38320,6 +39344,7 @@ public LoadBusSystem()//загрузка системы бизнесов
 		    ini_getFloat(file, "CordX", buscordx[i]);
 		    ini_getFloat(file, "CordY", buscordy[i]);
 		    ini_getFloat(file, "CordZ", buscordz[i]);
+		    ini_getInteger(file, "Count", busmoney[i]);
 			ini_closeFile(file);
 			CallRemoteFunction("GPSrfun", "iiisifff", 2, 1, i, busplayname[i],
 			busvw[i], buscordx[i], buscordy[i], buscordz[i]);
@@ -38346,7 +39371,6 @@ public LoadBusSystem()//загрузка системы бизнесов
 	for(new i; i < BUS_MAX; i++)
 	{
 		busidplay[i] = -600;//владелец бизнеса офф-лайн
-		busmoney[i] = 0;//обнуляем счётчик минут бизнеса
 		if(busday[i] == timecor[4])//если реальная дата равна дате окончания срока без права перекупки, то:
 		{
 			busday[i] = 0;//даём бизнесу право на его перекупку,
@@ -38385,7 +39409,6 @@ public LoadBusSystem()//загрузка системы бизнесов
 					if(buscount[j] == 1 && strcmp(RealName[i], busplayname[j], false) == 0)//если бизнес существует,
 					{//и это бизнес игрока, то:
 						busidplay[j] = i;//даём бизнесу ИД он-лайн игрока - владельца бизнеса
-						busmoney[j] = 0;//обнуляем счётчик минут бизнеса
 					}
 				}
 			}
@@ -38415,7 +39438,6 @@ public UnloadBusSystem()//выгрузка системы бизнесов
 		strdel(busplayname[i], 0, MAX_PLAYER_NAME);//удаляем имя владельца бизнеса
 		strcat(busplayname[i], "*** INV_PL_ID");
 		busidplay[i] = -600;//владелец бизнеса офф-лайн
-		busmoney[i] = 0;//обнуляем счётчик минут бизнеса
 		PickupID[i] = -600;//задаём несуществующий ID-номер пикапа для бизнеса
 		CallRemoteFunction("GPSrfun", "iiisifff", 2, 0, i, busplayname[i],
 		0, 0.0, 0.0, 0.0);
@@ -38657,11 +39679,20 @@ public RepairCar()
 			ini_closeFile(impfile);
 		}
 		impcon[12] = 1;//проверка файла для импорта на корректность заменяемых данных
-		if(impcon[0] == 0 && (strlen(impdatas[0]) < 1 || strlen(impdatas[0]) > 25))
-		{//если неверное имя аккаунта, то:
+		if(impcon[0] == 0 && strlen(impdatas[0]) == 0)
+		{//если прочитана пустая строка (за место имени аккаунта), то:
 			impcon[12] = 0;
 			strdel(impdatas[3], 0, 128);
 			strcat(impdatas[3], "ошибка Name");
+		}
+		else//иначе, если прочитана НЕ пустая строка, то:
+		{
+			if(strlen(impdatas[0]) > 25 || InpNameControl(impdatas[0]) == 0)//если имя аккаунта содержит ошибки, то:
+			{
+				impcon[12] = 0;
+				strdel(impdatas[3], 0, 128);
+				strcat(impdatas[3], "ошибка Name");
+			}
 		}
 		if(impcon[1] == 0 && (strlen(impdatas[1]) < 3 || strlen(impdatas[1]) > 20 || PassControl(impdatas[1]) == 0))
 		{//если неверный пароль, то:
@@ -38723,6 +39754,12 @@ public RepairCar()
 			strdel(impdatas[3], 0, 128);
 			strcat(impdatas[3], "ошибка Gang");
 		}
+		if(impcon[10] == 0 && 1 <= impdata[10] <= (MAX_GANGS - 1) && Gang[impdata[10]] == 0)
+		{//если ид банды не существует, то:
+			impcon[12] = 0;
+			strdel(impdatas[3], 0, 128);
+			strcat(impdatas[3], "ид банды не существует");
+		}
 		if(impcon[11] == 0 && (impdata[11] < 0 || impdata[11] > 6))
 		{//если неверный лвл в банде, то:
 			impcon[12] = 0;
@@ -38749,7 +39786,7 @@ public RepairCar()
 		if(impcon[12] == 1)
 		{
 			strdel(impdatas[3], 0, 128);
-			strcat(impdatas[3], "ок");
+			strcat(impdatas[3], "данные остались без изменений");
 		}
 		impcon[13] = 1;
 		if(impcon[12] == 1)//если файл для импорта не содержит ошибок, то:
@@ -38776,13 +39813,14 @@ public RepairCar()
 					{
 						strdel(impdatas[2], 0, 128);
 						strcat(impdatas[2], PlayerInfo[imploc2][pKey]);
-						strmid(PlayerInfo[imploc2][pKey], impdatas[1], 0, strlen(impdatas[1]), 255);
+						strmid(PlayerInfo[imploc2][pKey], impdatas[1], 0, strlen(impdatas[1]), 64);
 						format(ssss, sizeof(ssss), " **** Замена пароля игрока [%s] на (%s) FP: (%s) .", RealName[imploc2], PlayerInfo[imploc2][pKey], impdatas[2]);
 						print(ssss);
 						format(ssss, sizeof(ssss), " **** Замена пароля игрока [%s] .", RealName[imploc2]);
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " **** Ваш пароль был заменён на (%s) .", PlayerInfo[imploc2][pKey]);
 						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						impcon[12] = 2;
 					}
 				}
 				if(impcon[2] == 0)//замена лвл админа
@@ -38794,7 +39832,7 @@ public RepairCar()
 						{
 							impdata[12] = PlayerInfo[imploc2][pAdmin];
 							PlayerInfo[imploc2][pAdmin] = impdata[2];
-							AdmUpdate(RealName[imploc2], PlayerInfo[imploc2][pAdmin], 4);
+							AdmUpdate(RealName[imploc2], PlayerInfo[imploc2][pAdmin], 6);
 							if(PlayerInfo[imploc2][pAdmin] == 0)//если лвл админа = 0, то:
 							{
 								if(impcon[3] == 0)
@@ -38811,6 +39849,18 @@ public RepairCar()
 									impdata[8] = 0;//обнуление VIP лвл
 								}
 								if(impcon[8] == -9) { PlayerInfo[imploc2][pVIP] = 0; }
+							}
+							if(PlayerInfo[imploc2][pAdmin] <= 2 && impdata[12] >= 3)
+							{
+								for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+								{
+									if(strcmp(RealName[imploc2], scrnetper[i], false) == 0)//если ник админа найден, то:
+									{
+										strdel(scrnetper[i], 0, 64);//очистка слота
+										strcat(scrnetper[i], "*** INV_PL_ID");
+										ScrNetPerSave(i);//запись изменённого слота в per-файл
+									}
+								}
 							}
 							if(PlayerInfo[imploc2][pAdmin] <= 1 && impdata[12] >= 2)
 							{
@@ -38853,6 +39903,7 @@ public RepairCar()
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 							format(ssss, sizeof(ssss), " **** Ваш лвл админа был заменён на %d .", PlayerInfo[imploc2][pAdmin]);
 							SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+							impcon[12] = 2;
 						}
 					}
 				}
@@ -38885,6 +39936,7 @@ public RepairCar()
 								format(ssss, sizeof(ssss), " **** Ваша скрытость админа была заменена на ''выключено'' .");
 								SendClientMessage(imploc2, COLOR_YELLOW, ssss);
 							}
+							impcon[12] = 2;
 						}
 					}
 				}
@@ -38911,6 +39963,7 @@ public RepairCar()
 								format(ssss, sizeof(ssss), " **** Ваше бессмертие админа было заменено на ''выключено'' .");
 								SendClientMessage(imploc2, COLOR_YELLOW, ssss);
 							}
+							impcon[12] = 2;
 						}
 					}
 				}
@@ -38967,6 +40020,7 @@ public RepairCar()
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " **** Ваше время тюрьмы было заменено на %d сек.", PlayerInfo[imploc2][pPrisonsec]);
 						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						impcon[12] = 2;
 					}
 				}
 				if(impcon[6] == 0)//замена времени затыка
@@ -38996,6 +40050,7 @@ public RepairCar()
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " **** Ваше время затыка было заменено на %d сек.", PlayerInfo[imploc2][pMutedsec]);
 						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						impcon[12] = 2;
 					}
 				}
 				if(impcon[8] == 0)//замена VIP лвл
@@ -39083,6 +40138,7 @@ public RepairCar()
 							format(ssss, sizeof(ssss), " *** Так же, в админ-чат, Вы можете подать апелляционную жалобу.");
 							SendClientMessage(imploc2, COLOR_RED, ssss);
 						}
+						impcon[12] = 2;
 					}
 				}
 				if(impcon[7] == 0)//замена суммы денег
@@ -39100,6 +40156,7 @@ public RepairCar()
 							printf("[moneysys] Предыдущая сумма игрока %s [%d] : %d $", RealName[imploc2], imploc2, mnloc);
 							format(ssss, sizeof(ssss), " **** Ваша сумма денег была заменена на %d $ .", GetPVarInt(imploc2, "PlMon"));
 							SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+							impcon[12] = 2;
 						}
 					}
 				}
@@ -39119,6 +40176,7 @@ public RepairCar()
 							strcat(fbanreason[imploc2], " --- Замена данных: блокировка аккаунта");//добавляем в символьную переменную метку бана
 							PlayBanList(imploc2, fbanreason[imploc2], 0);
 							SetTimerEx("PlayBan", 300, 0, "i", imploc2);
+							impcon[12] = 2;
 						}
 					}
 				}
@@ -39129,16 +40187,49 @@ public RepairCar()
 						PGang[imploc2] = impdata[10];
 						if(PGang[imploc2] <= 0) { GangLvl[imploc2] = 0; }
 						if(PGang[imploc2] >= 1) { GangLvl[imploc2] = 1; }
-						format(ssss, sizeof(ssss), " **** Замена ид банды игрока [%s] на %d .", RealName[imploc2], PGang[imploc2]);
-						print(ssss);
-						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
-						format(ssss, sizeof(ssss), " **** Ваш ид банды был заменён на %d .", PGang[imploc2]);
-						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						if(PGang[imploc2] == 0)
+						{
+							format(ssss, sizeof(ssss), " **** Замена ид банды игрока [%s] на ''выход из банды'' .", RealName[imploc2]);
+							print(ssss);
+							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							format(ssss, sizeof(ssss), " **** Ваш ид банды был заменён на ''выход из банды'' .");
+							SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						}
+						else
+						{
+							if(PGang[imploc2] == -600)
+							{
+								format(ssss, sizeof(ssss), " **** Замена ид банды игрока [%s] на ''выход из банды'' .", RealName[imploc2]);
+								print(ssss);
+								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								format(ssss, sizeof(ssss), " **** + Запрет игрока [%s] приглашать себя в банду .", RealName[imploc2]);
+								print(ssss);
+								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								format(ssss, sizeof(ssss), " **** Ваш ид банды был заменён на ''выход из банды'' .");
+								SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+								format(ssss, sizeof(ssss), " **** + Установлен запрет на приглашение Вас в банду .");
+								SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+							}
+							else
+							{
+								format(ssss, sizeof(ssss), " **** Замена ид банды игрока [%s] на %d .", RealName[imploc2], PGang[imploc2]);
+								print(ssss);
+								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								format(ssss, sizeof(ssss), " **** Ваш ид банды был заменён на %d .", PGang[imploc2]);
+								SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+							}
+						}
+						impcon[12] = 2;
 					}
 				}
 				if(impcon[11] == 0)//замена лвл в банде
 				{
-					if(PGang[imploc2] <= 0) { impdata[11] = 0; }
+					if(PGang[imploc2] <= 0)
+					{
+						impdata[11] = 0;
+						GangLvl[imploc2] = 0;
+					}
+					if(PGang[imploc2] >= 1 && impdata[11] == 0) { impdata[11] = 1; }
 					if(GangLvl[imploc2] != impdata[11])
 					{
 						GangLvl[imploc2] = impdata[11];
@@ -39147,343 +40238,128 @@ public RepairCar()
 						SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 						format(ssss, sizeof(ssss), " **** Ваш лвл в банде был заменён на %d .", GangLvl[imploc2]);
 						SendClientMessage(imploc2, COLOR_YELLOW, ssss);
+						impcon[12] = 2;
 					}
 				}
 			}
 			else//если игрок офф-лайн, то:
 			{
-				new igkey[256], tdreg[256], adrip[256], data2[54];
-				new conakk = 0;
-#if (MOD90INS == 0)
-				format(impf, 256, "players/%s.ini", impdatas[0]);
-				if(fexist(impf))//если аккаунт существует, то:
-				{
-					conakk = 1;//делаем отметку существования аккаунта
-					new File: UserFile = fopen(impf, io_read);//чтение аккаунта
-					new key[ 256 ] , val[ 256 ];
-					new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
-					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-					    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-					    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-					    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-						if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-						if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-						if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-						if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-						if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-						if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-						if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-						if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-						if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-						if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-						if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-						if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//						if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//						if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//						if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//						if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//						if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//						if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//						if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//						if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//						if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//						if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//						if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-						if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-						if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-						if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-						if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-						if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-						if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-						if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-						if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-						if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-						if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-						if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-						if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-						if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-						if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-						if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-						if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-						if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-						if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-						if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-						if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-						if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-						if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-						if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-						if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-						if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-						if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-					}
-					fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new string999[256];
-					format(string999,sizeof(string999),"gangs/players/%s.ini", impdatas[0]);
-					if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-					{
-						new File: UserFile333 = fopen(string999, io_read);//чтение файла
-						new key333[ 256 ] , val333[ 256 ];
-						new Data333[ 256 ];
-						while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-						{
-							key333 = ini_GetKey( Data333 );
-							if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-							if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-						}
-						fclose(UserFile333);
-					}
-					if(fexist(string999))//удаляем аккаунт из системы банд (если файл существует)
-					{
-						fremove(string999);
-					}
-//---------------------------------- конец -------------------------------------
-				}
-#endif
-#if (MOD90INS == 1)
-				new dddata2[3], strdln[5000];
-				format(impf, 256, "players/%s.ini", impdatas[0]);//проверка существования аккаунта
-				if(fexist(impf))//если аккаунт зарегистрирован в fopen, то:
-				{
-					conakk = 1;//делаем отметку существования аккаунта в fopen
-					new File: UserFile = fopen(impf, io_read);//чтение аккаунта
-					new key[ 256 ] , val[ 256 ];
-					new Data[ 256 ];
-					while ( fread( UserFile , Data , sizeof( Data ) ) )
-					{
-						key = ini_GetKey( Data );
-						if( strcmp( key , "Key" , true ) == 0 ) { igkey = ini_GetValue( Data ); }
-						if( strcmp( key , "TDReg" , true ) == 0 ) { tdreg = ini_GetValue( Data ); }
-						if( strcmp( key , "IPAdr" , true ) == 0 ) { adrip = ini_GetValue( Data ); }
-						if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); data2[0] = strval( val ); }
-					    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); data2[1] = strval( val ); }
-					    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); data2[2] = strval( val ); }
-					    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); data2[3] = strval( val ); }
-						if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); data2[4] = strval( val ); }
-						if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); data2[5] = strval( val ); }
-						if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[6] = strval( val ); }
-						if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); data2[7] = strval( val ); }
-						if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); data2[8] = strval( val ); }
-						if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); data2[9] = strval( val ); }
-						if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); data2[10] = strval( val ); }
-						if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); data2[11] = strval( val ); }
-						if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); data2[12] = strval( val ); }
-						if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); data2[13] = strval( val ); }
-						if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); data2[14] = strval( val ); }
-						if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); data2[15] = strval( val ); }
-//						if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); data2[16] = strval( val ); }
-//						if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); data2[17] = strval( val ); }
-//						if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[18] = strval( val ); }
-//						if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[19] = strval( val ); }
-//						if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[20] = strval( val ); }
-//						if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); data2[21] = strval( val ); }
-//						if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); data2[22] = strval( val ); }
-//						if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[23] = strval( val ); }
-//						if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); data2[24] = strval( val ); }
-//						if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[25] = strval( val ); }
-//						if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); data2[26] = strval( val ); }
-						if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[27] = strval( val ); }
-						if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[28] = strval( val ); }
-						if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[29] = strval( val ); }
-						if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[30] = strval( val ); }
-						if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[31] = strval( val ); }
-						if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[32] = strval( val ); }
-						if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[33] = strval( val ); }
-						if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[34] = strval( val ); }
-						if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[35] = strval( val ); }
-						if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[36] = strval( val ); }
-						if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[37] = strval( val ); }
-						if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[38] = strval( val ); }
-						if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[39] = strval( val ); }
-						if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); data2[40] = strval( val ); }
-						if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); data2[41] = strval( val ); }
-						if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); data2[42] = strval( val ); }
-						if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); data2[43] = strval( val ); }
-						if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); data2[44] = strval( val ); }
-						if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); data2[45] = strval( val ); }
-						if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); data2[46] = strval( val ); }
-						if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); data2[47] = strval( val ); }
-						if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); data2[48] = strval( val ); }
-						if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); data2[49] = strval( val ); }
-						if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); data2[50] = strval( val ); }
-						if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); data2[51] = strval( val ); }
-						if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); data2[52] = strval( val ); }
-					}
-					fclose(UserFile);
-					strdel(igkey, strlen(igkey)-1, strlen(igkey));//корректировка пароля
-					strdel(tdreg, strlen(tdreg)-1, strlen(tdreg));//корректировка времени и дата регистрации
-					strdel(adrip, strlen(adrip)-1, strlen(adrip));//корректировка IP-адреса
-//эти строки оставлены для совместимости с ранней версией мода !!!
-//--------------------------------- начало -------------------------------------
-					new string999[256];
-					format(string999,sizeof(string999),"gangs/players/%s.ini", impdatas[0]);
-					if(fexist(string999))//читаем аккаунт из системы банд (если файл существует)
-					{
-						new File: UserFile333 = fopen(string999, io_read);//чтение файла
-						new key333[ 256 ] , val333[ 256 ];
-						new Data333[ 256 ];
-						while ( fread( UserFile333 , Data333 , sizeof( Data333 ) ) )
-						{
-							key333 = ini_GetKey( Data333 );
-							if( strcmp( key333 , "Gang " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[14] = strval( val333 ); }
-							if( strcmp( key333 , "GangLvl " , true ) == 0 ) { val333 = ini_GetValue( Data333 ); data2[15] = strval( val333 ); }
-						}
-						fclose(UserFile333);
-					}
-					if(fexist(string999))//удаляем аккаунт из системы банд (если файл существует)
-					{
-						fremove(string999);
-					}
-//---------------------------------- конец -------------------------------------
-					if(fexist(impf))
-					{
-						fremove(impf);//удаляем аккаунт из fopen
-					}
-				}
-				else//иначе: (если аккаунт зарегистрирован в SQLite)
-				{
-					format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", impdatas[0]);//создаём запрос БД
-					querydbau = db_query(playerdb, ssss);//отправляем запрос БД
-					if(db_num_rows(querydbau) != 0)//переведём результат запроса в число найденных строк в БД
-					{//если число строк не равно 0 (такой аккаунт в БД есть), то - аккаунт зарегистрирован в БД
-						conakk = 2;//делаем отметку существования аккаунта в SQLite
-						new buffer[32];//читаем данные из БД
-						db_get_field(querydbau, 2, igkey, 256);//Key
-						db_get_field(querydbau, 3, tdreg, 256);//TDReg
-						db_get_field(querydbau, 4, buffer, 32); dddata2[0] = strval(buffer);//DEndConD
-						db_get_field(querydbau, 5, buffer, 32); dddata2[1] = strval(buffer);//DEndConM
-						db_get_field(querydbau, 6, buffer, 32); dddata2[2] = strval(buffer);//DEndConY
-						db_get_field(querydbau, 7, adrip, 256);//IPAdr
-						db_get_field(querydbau, 8, buffer, 32); data2[0] = strval(buffer);//MinLog
-						db_get_field(querydbau, 9, buffer, 32); data2[1] = strval(buffer);//AdminLevel
-						db_get_field(querydbau, 10, buffer, 32); data2[2] = strval(buffer);//AdminShadow
-						db_get_field(querydbau, 11, buffer, 32); data2[3] = strval(buffer);//AdminLive
-						db_get_field(querydbau, 13, buffer, 32); data2[5] = strval(buffer);//Prison
-						db_get_field(querydbau, 14, buffer, 32); data2[6] = strval(buffer);//Prisonsec
-						db_get_field(querydbau, 15, buffer, 32); data2[7] = strval(buffer);//Muted
-						db_get_field(querydbau, 16, buffer, 32); data2[8] = strval(buffer);//Mutedsec
-						db_get_field(querydbau, 17, buffer, 32); data2[9] = strval(buffer);//Money
-						db_get_field(querydbau, 18, buffer, 32); data2[10] = strval(buffer);//Kills
-						db_get_field(querydbau, 19, buffer, 32); data2[11] = strval(buffer);//Deaths
-						db_get_field(querydbau, 20, buffer, 32); data2[12] = strval(buffer);//VIP
-						db_get_field(querydbau, 21, buffer, 32); data2[13] = strval(buffer);//Lock
-						db_get_field(querydbau, 22, buffer, 32); data2[14] = strval(buffer);//Gang
-						db_get_field(querydbau, 23, buffer, 32); data2[15] = strval(buffer);//GangLvl
-						db_free_result(querydbau);//очищаем результат запроса БД
-					}
-				}
-#endif
-				if(conakk == 1 || conakk == 2)//если аккаунт существует, то:
-				{
-//==============================================================================
+				strdel(dAccName[MAX_PLAYERS - 1], 0, 64);
+				strcat(dAccName[MAX_PLAYERS - 1], impdatas[0]);
+				if(AccDataLoadUn(MAX_PLAYERS - 1) == 1)
+				{//если аккаунт существует, то:
 					new ddainv = 0;
-					if(data2[1] < 0)//если лвл админа отрицательный, то:
+					if(admData[MAX_PLAYERS - 1][dAdmin] < 0)//если лвл админа отрицательный, то:
 					{
-						data2[1] = data2[1] * -1;//делаем лвл админа положительным
+						admData[MAX_PLAYERS - 1][dAdmin] = admData[MAX_PLAYERS - 1][dAdmin] * -1;//делаем лвл админа положительным
 						ddainv = 1;//делаем отметку инверсии знака лвл админа
 					}
 					if(impcon[1] == 0)//замена пароля
 					{
-						if(strcmp(igkey, impdatas[1], false) != 0)
+						if(strcmp(admData[MAX_PLAYERS - 1][dKey], impdatas[1], false) != 0)
 						{
 							strdel(impdatas[2], 0, 128);
-							strcat(impdatas[2], igkey);
-							strmid(igkey, impdatas[1], 0, strlen(impdatas[1]), 255);
-							format(ssss, sizeof(ssss), " **** Замена пароля аккаунта игрока [%s] на (%s) FP: (%s) .", impdatas[0], igkey, impdatas[2]);
+							strcat(impdatas[2], admData[MAX_PLAYERS - 1][dKey]);
+							strmid(admData[MAX_PLAYERS - 1][dKey], impdatas[1], 0, strlen(impdatas[1]), 32);
+							format(ssss, sizeof(ssss), " **** Замена пароля аккаунта игрока [%s] на (%s) FP: (%s) .", impdatas[0], admData[MAX_PLAYERS - 1][dKey], impdatas[2]);
 							print(ssss);
 							format(ssss, sizeof(ssss), " **** Замена пароля аккаунта игрока [%s] .", impdatas[0]);
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[2] == 0)//замена лвл админа
 					{
-						if(data2[1] != impdata[2])
+						if(admData[MAX_PLAYERS - 1][dAdmin] != impdata[2])
 						{
 							if((impcon[8] == 0 && impdata[8] != 3) ||
-							(impcon[8] == -9 && data2[12] != 3))//если нет депортации, то:
+							(impcon[8] == -9 && admData[MAX_PLAYERS - 1][dVIP] != 3))//если нет депортации, то:
 							{
-								impdata[12] = data2[1];
-								data2[1] = impdata[2];
-								AdmUpdate(impdatas[0], data2[1], 4);
-								if(data2[1] == 0)//если лвл админа = 0, то:
+								impdata[12] = admData[MAX_PLAYERS - 1][dAdmin];
+								admData[MAX_PLAYERS - 1][dAdmin] = impdata[2];
+								AdmUpdate(impdatas[0], admData[MAX_PLAYERS - 1][dAdmin], 6);
+								if(admData[MAX_PLAYERS - 1][dAdmin] == 0)//если лвл админа = 0, то:
 								{
 									if(impcon[3] == 0)
 									{
 										impdata[3] = 0;//выключение скрытости админа
-										data2[2] = 0;
+										admData[MAX_PLAYERS - 1][dAdmshad] = 0;
 									}
-									if(impcon[3] == -9) { data2[2] = 0; }
+									if(impcon[3] == -9) { admData[MAX_PLAYERS - 1][dAdmshad] = 0; }
 								}
-								if(data2[1] >= 1)//если лвл админа >= 1, то:
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 1)//если лвл админа >= 1, то:
 								{
 									if(impcon[8] == 0 && (impdata[8] == 1 || impdata[8] == 2))
 									{//если есть VIP-1 или VIP-2, то:
 										impdata[8] = 0;//обнуление VIP лвл
 									}
-									if(impcon[8] == -9) { data2[12] = 0; }
+									if(impcon[8] == -9) { admData[MAX_PLAYERS - 1][dVIP] = 0; }
 								}
-								if(data2[1] <= 1 && impdata[12] >= 2)
+								if(admData[MAX_PLAYERS - 1][dAdmin] <= 2 && impdata[12] >= 3)
+								{
+									for(new i = 0; i < 20; i++)//удаление ника админа из per-файла
+									{
+										if(strcmp(impdatas[0], scrnetper[i], false) == 0)//если ник админа найден, то:
+										{
+											strdel(scrnetper[i], 0, 64);//очистка слота
+											strcat(scrnetper[i], "*** INV_PL_ID");
+											ScrNetPerSave(i);//запись изменённого слота в per-файл
+										}
+									}
+								}
+								if(admData[MAX_PLAYERS - 1][dAdmin] <= 1 && impdata[12] >= 2)
 								{
 									new twenlim, restlim;
 									Fmadmins(0, impdatas[0], 0, twenlim, restlim);
 								}
-								if(data2[1] >= 2 && impdata[12] <= 1)
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 2 && impdata[12] <= 1)
 								{
 									new twenlim = 0;
 									new restlim = 0;
 									Fmadmins(1, impdatas[0], 0, twenlim, restlim);
 								}
-								if(data2[1] >= 3 && impdata[12] <= 2)
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 3 && impdata[12] <= 2)
 								{
 									if(impcon[4] == 0 && impdata[4] == 1)
 									{
-										data2[3] = 1;
+										admData[MAX_PLAYERS - 1][dAdmlive] = 1;
 									}
 									if(impcon[4] == -9)
 									{
-										data2[3] = 1;
+										admData[MAX_PLAYERS - 1][dAdmlive] = 1;
 									}
 								}
-								if(data2[1] <= 2 && impdata[12] >= 3)
+								if(admData[MAX_PLAYERS - 1][dAdmin] <= 2 && impdata[12] >= 3)
 								{
 									if(impcon[4] == 0) { impcon[4] = -9; }
-									data2[3] = 0;
+									admData[MAX_PLAYERS - 1][dAdmlive] = 0;
 								}
-								if(data2[1] >= 1 && impdata[12] == 0)
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 1 && impdata[12] == 0)
 								{//если лвл админа был установлен после нулевого лвл админа, то:
 									ddainv = 1;//делаем отметку инверсии знака лвл админа
 								}
-								format(ssss, sizeof(ssss), " **** Замена лвл аккаунта админа [%s] на %d .", impdatas[0], data2[1]);
+								format(ssss, sizeof(ssss), " **** Замена лвл аккаунта админа [%s] на %d .", impdatas[0], admData[MAX_PLAYERS - 1][dAdmin]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								impcon[12] = 3;
 							}
 						}
 					}
 					if(impcon[3] == 0)//замена скрытости админа
 					{
-						if(data2[2] != impdata[3])
+						if(admData[MAX_PLAYERS - 1][dAdmshad] != impdata[3])
 						{
-							if(data2[1] >= 1)
+							if(admData[MAX_PLAYERS - 1][dAdmin] >= 1)
 							{
-								data2[2] = impdata[3];
-								if(data2[2] == 1)
+								admData[MAX_PLAYERS - 1][dAdmshad] = impdata[3];
+								if(admData[MAX_PLAYERS - 1][dAdmshad] == 1)
 								{
-									if(impcon[8] == 0 && impdata[8] != 3 && data2[12] != 3)
+									if(impcon[8] == 0 && impdata[8] != 3 && admData[MAX_PLAYERS - 1][dVIP] != 3)
 									{//если нет замены на депортацию, И ранее НЕ была депортация, то:
 										impdata[8] = 0;//обнуление VIP лвл
-										data2[12] = 0;
+										admData[MAX_PLAYERS - 1][dVIP] = 0;
 									}
-									if(impcon[8] == -9 && data2[12] != 3) { data2[12] = 0; }
+									if(impcon[8] == -9 && admData[MAX_PLAYERS - 1][dVIP] != 3) { admData[MAX_PLAYERS - 1][dVIP] = 0; }
 									format(ssss, sizeof(ssss), " **** Замена скрытости аккаунта админа [%s] на ''включено'' .", impdatas[0]);
 									print(ssss);
 									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
@@ -39494,17 +40370,18 @@ public RepairCar()
 									print(ssss);
 									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								}
+								impcon[12] = 3;
 							}
 						}
 					}
 					if(impcon[4] == 0)//замена бессмертия админа
 					{
-						if(data2[3] != impdata[4])
+						if(admData[MAX_PLAYERS - 1][dAdmlive] != impdata[4])
 						{
-							if(data2[1] >= 3)
+							if(admData[MAX_PLAYERS - 1][dAdmin] >= 3)
 							{
-								data2[3] = impdata[4];
-								if(data2[3] == 1)
+								admData[MAX_PLAYERS - 1][dAdmlive] = impdata[4];
+								if(admData[MAX_PLAYERS - 1][dAdmlive] == 1)
 								{
 									format(ssss, sizeof(ssss), " **** Замена бессмертия аккаунта админа [%s] на ''включено'' .", impdatas[0]);
 									print(ssss);
@@ -39516,6 +40393,7 @@ public RepairCar()
 									print(ssss);
 									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								}
+								impcon[12] = 3;
 							}
 						}
 					}
@@ -39523,121 +40401,153 @@ public RepairCar()
 					{
 						if(impdata[5] <= 3) { impdata[5] = 0; }
 						if(impdata[5] == 4) { impdata[5] = 5; }
-						if(data2[6] != impdata[5])
+						if(admData[MAX_PLAYERS - 1][dPrisonsec] != impdata[5])
 						{
-							data2[6] = impdata[5];
-							format(ssss, sizeof(ssss), " **** Замена времени тюрьмы аккаунта игрока [%s] на %d сек.", impdatas[0], data2[6]);
+							if(impdata[5] > 3)//если посадка в тюрьму, то:
+							{
+								if(admData[MAX_PLAYERS - 1][dPrisonsec] == 0)//если не в тюрьме, то:
+								{
+									admData[MAX_PLAYERS - 1][dPrison]++;//число посадок в тюрьму +1
+								}
+							}
+							else//иначе (если освобождение из тюрьмы), то:
+							{
+								if(admData[MAX_PLAYERS - 1][dPrisonsec] > 0)//если игрок в тюрьме, то:
+								{
+									admData[MAX_PLAYERS - 1][dPrison]--;//число посадок в тюрьму -1
+								}
+							}
+							admData[MAX_PLAYERS - 1][dPrisonsec] = impdata[5];
+							format(ssss, sizeof(ssss), " **** Замена времени тюрьмы аккаунта игрока [%s] на %d сек.", impdatas[0], admData[MAX_PLAYERS - 1][dPrisonsec]);
 							print(ssss);
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[6] == 0)//замена времени затыка
 					{
 						if(impdata[6] <= 3) { impdata[6] = 0; }
 						if(impdata[6] == 4) { impdata[6] = 5; }
-						if(data2[8] != impdata[6])
+						if(admData[MAX_PLAYERS - 1][dMutedsec] != impdata[6])
 						{
-							data2[8] = impdata[6];
-							format(ssss, sizeof(ssss), " **** Замена времени затыка аккаунта игрока [%s] на %d сек.", impdatas[0], data2[8]);
+							if(impdata[6] > 3)//если затык, то:
+							{
+								if(admData[MAX_PLAYERS - 1][dMutedsec] == 0)//если не заткнут, то:
+								{
+									admData[MAX_PLAYERS - 1][dMuted]++;//число затыков +1
+								}
+							}
+							else//иначе (если разоткнут), то:
+							{
+								if(admData[MAX_PLAYERS - 1][dMutedsec] > 0)//если заткнут, то:
+								{
+									admData[MAX_PLAYERS - 1][dMuted]--;//число затыков -1
+								}
+							}
+							admData[MAX_PLAYERS - 1][dMutedsec] = impdata[6];
+							format(ssss, sizeof(ssss), " **** Замена времени затыка аккаунта игрока [%s] на %d сек.", impdatas[0], admData[MAX_PLAYERS - 1][dMutedsec]);
 							print(ssss);
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[8] == 0)//замена VIP лвл
 					{
-						if(data2[12] != impdata[8])
+						if(admData[MAX_PLAYERS - 1][dVIP] != impdata[8])
 						{
-							if(data2[1] == 0 && impdata[8] == 4)
+							if(admData[MAX_PLAYERS - 1][dAdmin] == 0 && impdata[8] == 4)
 							{//если игрок - не админ, И VIP лвл = 4, то:
 								impdata[8] = 0;//обнуление VIP лвл
 							}
-							if(impdata[8] != 3 && data2[1] >= 1 && data2[2] == 1)
+							if(impdata[8] != 3 && admData[MAX_PLAYERS - 1][dAdmin] >= 1 && admData[MAX_PLAYERS - 1][dAdmshad] == 1)
 							{//если нет замены на депортацию, И у админа скрытость, то:
 								impdata[8] = 0;//обнуление VIP лвл
 							}
-							if(data2[1] >= 1 && (impdata[8] == 1 || impdata[8] == 2))
+							if(admData[MAX_PLAYERS - 1][dAdmin] >= 1 && (impdata[8] == 1 || impdata[8] == 2))
 							{//если игрок - админ, И VIP лвл = 1 ИЛИ = 2, то:
 								impdata[8] = 0;//обнуление VIP лвл
 							}
 							new mnloc;
-							if(impdata[8] == 3 && data2[12] != 3)
+							if(impdata[8] == 3 && admData[MAX_PLAYERS - 1][dVIP] != 3)
 							{//если замена на депортацию, И ранее НЕ была депортация, то:
-								mnloc = data2[9];//запомнить денежную сумму
+								mnloc = admData[MAX_PLAYERS - 1][dMoney];//запомнить денежную сумму
 							}
-							impdata[12] = data2[12];
-							data2[12] = impdata[8];
-							if(data2[1] == 0 && data2[12] == 0 && (impdata[12] == 1 || impdata[12] == 2))
+							impdata[12] = admData[MAX_PLAYERS - 1][dVIP];
+							admData[MAX_PLAYERS - 1][dVIP] = impdata[8];
+							if(admData[MAX_PLAYERS - 1][dAdmin] == 0 && admData[MAX_PLAYERS - 1][dVIP] == 0 && (impdata[12] == 1 || impdata[12] == 2))
 							{
-								format(ssss, sizeof(ssss), " **** Замена VIP лвл аккаунта игрока [%s] на %d .", impdatas[0], data2[12]);
+								format(ssss, sizeof(ssss), " **** Замена VIP лвл аккаунта игрока [%s] на %d .", impdatas[0], admData[MAX_PLAYERS - 1][dVIP]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 							}
-							if(data2[1] == 0 && (data2[12] == 1 || data2[12] == 2))
+							if(admData[MAX_PLAYERS - 1][dAdmin] == 0 && (admData[MAX_PLAYERS - 1][dVIP] == 1 || admData[MAX_PLAYERS - 1][dVIP] == 2))
 							{
-								format(ssss, sizeof(ssss), " **** Замена VIP лвл аккаунта игрока [%s] на %d .", impdatas[0], data2[12]);
+								format(ssss, sizeof(ssss), " **** Замена VIP лвл аккаунта игрока [%s] на %d .", impdatas[0], admData[MAX_PLAYERS - 1][dVIP]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 							}
-							if(data2[2] == 0)
+							if(admData[MAX_PLAYERS - 1][dAdmshad] == 0)
 							{
-								if(data2[1] >= 1 && data2[12] == 0 && impdata[12] != 0)
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 1 && admData[MAX_PLAYERS - 1][dVIP] == 0 && impdata[12] != 0)
 								{
 									format(ssss, sizeof(ssss), " **** Замена приёма PM от игроков для аккаунта админа [%s] на ''выключено'' .", impdatas[0]);
 									print(ssss);
 									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								}
-								if(data2[1] >= 1 && data2[12] == 4 && impdata[12] != 4)
+								if(admData[MAX_PLAYERS - 1][dAdmin] >= 1 && admData[MAX_PLAYERS - 1][dVIP] == 4 && impdata[12] != 4)
 								{
 									format(ssss, sizeof(ssss), " **** Замена приёма PM от игроков для аккаунта админа [%s] на ''включено'' .", impdatas[0]);
 									print(ssss);
 									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								}
 							}
-							if(data2[12] != 3 && impdata[12] == 3)
+							if(admData[MAX_PLAYERS - 1][dVIP] != 3 && impdata[12] == 3)
 							{
 								format(ssss, sizeof(ssss), " **** Замена депортации аккаунта игрока [%s] на ''отменено'' .", impdatas[0]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 							}
-							if(data2[12] == 3 && impdata[12] != 3)
+							if(admData[MAX_PLAYERS - 1][dVIP] == 3 && impdata[12] != 3)
 							{
-								data2[1] = 0;
-								data2[2] = 0;
-								data2[3] = 0;
-								data2[9] = 1000;
+								admData[MAX_PLAYERS - 1][dAdmin] = 0;
+								admData[MAX_PLAYERS - 1][dAdmshad] = 0;
+								admData[MAX_PLAYERS - 1][dAdmlive] = 0;
+								admData[MAX_PLAYERS - 1][dMoney] = 1000;
 								format(ssss, sizeof(ssss), " **** Замена стандартного режима игры аккаунта игрока [%s] на депортацию.", impdatas[0]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								printf("[moneysys] Предыдущая сумма аккаунта игрока %s : %d $", impdatas[0], mnloc);
 							}
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[7] == 0)//замена суммы денег
 					{
-						if(data2[12] != 3)//если нет депортации, то:
+						if(admData[MAX_PLAYERS - 1][dVIP] != 3)//если нет депортации, то:
 						{
-							if(data2[9] != impdata[7])
+							if(admData[MAX_PLAYERS - 1][dMoney] != impdata[7])
 							{
 								new mnloc;
-								mnloc = data2[9];
-								data2[9] = impdata[7];
-								format(ssss, sizeof(ssss), " **** Замена суммы денег аккаунта игрока [%s] на %d $ .", impdatas[0], data2[9]);
+								mnloc = admData[MAX_PLAYERS - 1][dMoney];
+								admData[MAX_PLAYERS - 1][dMoney] = impdata[7];
+								format(ssss, sizeof(ssss), " **** Замена суммы денег аккаунта игрока [%s] на %d $ .", impdatas[0], admData[MAX_PLAYERS - 1][dMoney]);
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 								printf("[moneysys] Предыдущая сумма аккаунта игрока %s : %d $", impdatas[0], mnloc);
+								impcon[12] = 3;
 							}
 						}
 					}
 					if(impcon[9] == 0)//замена блокировки аккаунта
 					{
-						if(data2[13] != impdata[9])
+						if(admData[MAX_PLAYERS - 1][dLock] != impdata[9])
 						{
 							if(impdata[9] == 1)//блокировка аккаунта
 							{
-								data2[13] = impdata[9];//блокировка аккаунта
+								admData[MAX_PLAYERS - 1][dLock] = impdata[9];//блокировка аккаунта
 								strdel(ssss, 0, 256);//сборка RCON-команды бана
 								strcat(ssss, "banip ");
-								strcat(ssss, adrip);
+								strcat(ssss, admData[MAX_PLAYERS - 1][dIPAdr]);
 								SendRconCommand(ssss);//RCON-команда бана
 								SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
 
@@ -39647,7 +40557,7 @@ public RepairCar()
 								DatCor();//коррекция даты
 
 								new string999[256], stringdop[256];
-								format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - Замена данных: блокировка аккаунта",adrip,timecor[0],timecor[1],timecor[4],timecor[3],timecor[2]);
+								format(stringdop,256,"%s [%02d:%02d | %02d/%02d/%04d] - Замена данных: блокировка аккаунта",admData[MAX_PLAYERS - 1][dIPAdr],timecor[0],timecor[1],timecor[4],timecor[3],timecor[2]);
 								format(string999,sizeof(string999),"banlist/players/%s.ini",impdatas[0]);
 								new File: hFile44 = fopen(string999, io_write);//запись файла бан-листа
 								if (hFile44)
@@ -39664,18 +40574,18 @@ public RepairCar()
 							}
 							if(impdata[9] == 0)//аккаунт разблокирован
 							{
-								data2[12] = 0;//отмена депортации
-								data2[13] = impdata[9];//сброс блокировки аккаунта
+								admData[MAX_PLAYERS - 1][dVIP] = 0;//отмена депортации
+								admData[MAX_PLAYERS - 1][dLock] = impdata[9];//сброс блокировки аккаунта
 								strdel(ssss, 0, 256);//сборка RCON-команды разбана
 								strcat(ssss, "unbanip ");
-								strcat(ssss, adrip);
+								strcat(ssss, admData[MAX_PLAYERS - 1][dIPAdr]);
 								SendRconCommand(ssss);//RCON-команда разбана
 								SendRconCommand("reloadbans");//RCON-команда перезагрузки бан-листа
 
 								new string222[256], string333[256], idfile;
 								idfile = 0;
 								new ip333[128];
-								ip333 = ConvIP(adrip);
+								ip333 = ConvIP(admData[MAX_PLAYERS - 1][dIPAdr]);
 								format(string222,sizeof(string222),"banlist/players/%s.ini",impdatas[0]);
 								if(fexist(string222))//читаем аккаунт из бан-листа (если файл существует)
 								{
@@ -39708,7 +40618,7 @@ public RepairCar()
 								if(fexist(string222))
 								{
 									fremove(string222);//удаляем IP-адрес из бан-листа
-									format(ssss,sizeof(ssss)," ( IP-адрес [%s] был удалён из бан-листа ) !", adrip);
+									format(ssss,sizeof(ssss)," ( IP-адрес [%s] был удалён из бан-листа ) !", admData[MAX_PLAYERS - 1][dIPAdr]);
 									print(ssss);
 								}
 
@@ -39716,143 +40626,80 @@ public RepairCar()
 								print(ssss);
 								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
 							}
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[10] == 0)//замена ид банды
 					{
-						if(data2[14] != impdata[10])
+						if(admData[MAX_PLAYERS - 1][dGang] != impdata[10])
 						{
-							data2[14] = impdata[10];
-							if(data2[14] <= 0) { data2[15] = 0; }
-							if(data2[14] >= 1) { data2[15] = 1; }
-							format(ssss, sizeof(ssss), " **** Замена ид банды аккаунта игрока [%s] на %d .", impdatas[0], data2[14]);
-							print(ssss);
-							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							admData[MAX_PLAYERS - 1][dGang] = impdata[10];
+							if(admData[MAX_PLAYERS - 1][dGang] <= 0) { admData[MAX_PLAYERS - 1][dGangLvl] = 0; }
+							if(admData[MAX_PLAYERS - 1][dGang] >= 1) { admData[MAX_PLAYERS - 1][dGangLvl] = 1; }
+							if(admData[MAX_PLAYERS - 1][dGang] == 0)
+							{
+								format(ssss, sizeof(ssss), " **** Замена ид банды аккаунта игрока [%s] на ''выход из банды'' .", impdatas[0]);
+								print(ssss);
+								SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							}
+							else
+							{
+								if(admData[MAX_PLAYERS - 1][dGang] == -600)
+								{
+									format(ssss, sizeof(ssss), " **** Замена ид банды аккаунта игрока [%s] на ''выход из банды'' .", impdatas[0]);
+									print(ssss);
+									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+									format(ssss, sizeof(ssss), " **** + Запрет аккаунта игрока [%s] приглашать себя в банду .", impdatas[0]);
+									print(ssss);
+									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								}
+								else
+								{
+									format(ssss, sizeof(ssss), " **** Замена ид банды аккаунта игрока [%s] на %d .", impdatas[0], admData[MAX_PLAYERS - 1][dGang]);
+									print(ssss);
+									SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+								}
+							}
+							impcon[12] = 3;
 						}
 					}
 					if(impcon[11] == 0)//замена лвл в банде
 					{
-						if(data2[14] <= 0) { impdata[11] = 0; }
-						if(data2[15] != impdata[11])
+						if(admData[MAX_PLAYERS - 1][dGang] <= 0)
 						{
-							data2[15] = impdata[11];
-							format(ssss, sizeof(ssss), " **** Замена лвл в банде аккаунта игрока [%s] на %d .", impdatas[0], data2[15]);
+							impdata[11] = 0;
+							admData[MAX_PLAYERS - 1][dGangLvl] = 0;
+						}
+						if(admData[MAX_PLAYERS - 1][dGang] >= 1 && impdata[11] == 0) { impdata[11] = 1; }
+						if(admData[MAX_PLAYERS - 1][dGangLvl] != impdata[11])
+						{
+							admData[MAX_PLAYERS - 1][dGangLvl] = impdata[11];
+							format(ssss, sizeof(ssss), " **** Замена лвл в банде аккаунта игрока [%s] на %d .", impdatas[0], admData[MAX_PLAYERS - 1][dGangLvl]);
 							print(ssss);
 							SendAdminMessage(COLOR_LIGHTBLUE, ssss);
+							impcon[12] = 3;
 						}
 					}
 					if(ddainv == 1)//если есть отметка инверсии знака лвл админа, то:
 					{
-						data2[1] = data2[1] * -1;//делаем лвл админа отрицательным
+						admData[MAX_PLAYERS - 1][dAdmin] = admData[MAX_PLAYERS - 1][dAdmin] * -1;//делаем лвл админа отрицательным
 					}
-//==============================================================================
 #if (MOD90INS == 0)
-					new File: hFile = fopen(impf, io_write);//запись изменённого аккаунта
-					if (hFile)
-					{
-						new var[32];
-						format(var, 32, "Key=%s\n",igkey);fwrite(hFile, var);
-						format(var, 32, "TDReg=%s\n",tdreg);fwrite(hFile, var);
-						format(var, 32, "IPAdr=%s\n",adrip);fwrite(hFile, var);
-						format(var, 32, "MinLog=%d\n",data2[0]);fwrite(hFile, var);
-						format(var, 32, "AdminLevel=%d\n",data2[1]);fwrite(hFile, var);
-						format(var, 32, "AdminShadow=%d\n",data2[2]);fwrite(hFile, var);
-						format(var, 32, "AdminLive=%d\n",data2[3]);fwrite(hFile, var);
-						format(var, 32, "Registered=%d\n",data2[4]);fwrite(hFile, var);
-						format(var, 32, "Prison=%d\n",data2[5]);fwrite(hFile, var);
-						format(var, 32, "Prisonsec=%d\n",data2[6]);fwrite(hFile, var);
-						format(var, 32, "Muted=%d\n",data2[7]);fwrite(hFile, var);
-						format(var, 32, "Mutedsec=%d\n",data2[8]);fwrite(hFile, var);
-						format(var, 32, "Money=%d\n",data2[9]);fwrite(hFile, var);
-						format(var, 32, "Kills=%d\n",data2[10]);fwrite(hFile, var);
-						format(var, 32, "Deaths=%d\n",data2[11]);fwrite(hFile, var);
-						format(var, 32, "VIP=%d\n",data2[12]);fwrite(hFile, var);
-						format(var, 32, "Lock=%d\n",data2[13]);fwrite(hFile, var);
-						format(var, 32, "Gang=%d\n",data2[14]);fwrite(hFile, var);
-						format(var, 32, "GangLvl=%d\n",data2[15]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL=%d\n",data2[16]);fwrite(hFile, var);
-//						format(var, 32, "PISTOL_SILENCED=%d\n",data2[17]);fwrite(hFile, var);
-//						format(var, 32, "DESERT_EAGLE=%d\n",data2[18]);fwrite(hFile, var);
-//						format(var, 32, "SHOTGUN=%d\n",data2[19]);fwrite(hFile, var);
-//						format(var, 32, "SAWNOFF_SHOTGUN=%d\n",data2[20]);fwrite(hFile, var);
-//						format(var, 32, "SPAS12_SHOTGUN=%d\n",data2[21]);fwrite(hFile, var);
-//						format(var, 32, "MICRO_UZI=%d\n",data2[22]);fwrite(hFile, var);
-//						format(var, 32, "MP5=%d\n",data2[23]);fwrite(hFile, var);
-//						format(var, 32, "AK47=%d\n",data2[24]);fwrite(hFile, var);
-//						format(var, 32, "M4=%d\n",data2[25]);fwrite(hFile, var);
-//						format(var, 32, "SNIPERRIFLE=%d\n",data2[26]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot0=%d\n",data2[27]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot1=%d\n",data2[28]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot2=%d\n",data2[29]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot3=%d\n",data2[30]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot4=%d\n",data2[31]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot5=%d\n",data2[32]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot6=%d\n",data2[33]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot7=%d\n",data2[34]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot8=%d\n",data2[35]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot9=%d\n",data2[36]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot10=%d\n",data2[37]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot11=%d\n",data2[38]);fwrite(hFile, var);
-						format(var, 32, "Weapon_slot12=%d\n",data2[39]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot0=%d\n",data2[40]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot1=%d\n",data2[41]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot2=%d\n",data2[42]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot3=%d\n",data2[43]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot4=%d\n",data2[44]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot5=%d\n",data2[45]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot6=%d\n",data2[46]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot7=%d\n",data2[47]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot8=%d\n",data2[48]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot9=%d\n",data2[49]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot10=%d\n",data2[50]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot11=%d\n",data2[51]);fwrite(hFile, var);
-						format(var, 32, "Ammo_slot12=%d\n",data2[52]);fwrite(hFile, var);
-						fclose(hFile);
-					}
+					strdel(dAccName[MAX_PLAYERS - 1], 0, 64);
+					strcat(dAccName[MAX_PLAYERS - 1], impdatas[0]);
+					AccDataSaveFo(MAX_PLAYERS - 1);//запись изменённого аккаунта
 #endif
 #if (MOD90INS == 1)
-					if(conakk == 1)//если аккаунт был зарегистрирован в fopen, то:
-					{
-						format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", impdatas[0]);//миграция аккаунта в БД, создаём запрос БД
-						db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
-
-						format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
-						format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
-						format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
-						format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
-						format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
-						format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12) ", strdln);
-						format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, impdatas[0],igkey,tdreg);//IDCopy,Name,Key,TDReg
-						format(strdln, sizeof(strdln), "%s0,0,0,'%s',", strdln, adrip);//DEndConD,DEndConM,DEndConY,IPAdr
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[0],data2[1],data2[2]);//MinLog,AdminLevel,AdminShadow
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[3],data2[4],data2[5]);//AdminLive,Registered,Prison
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[6],data2[7],data2[8]);//Prisonsec,Muted,Mutedsec
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, data2[9],data2[10],data2[11]);//Money,Kills,Deaths
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[12],data2[13],data2[14],data2[15]);//VIP,Lock,Gang,GangLvl
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[27],data2[28],data2[29],data2[30]);//Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[31],data2[32],data2[33],data2[34]);//Weapon_slot4,Weapon_slot5,Weapon_slot6,Weapon_slot7
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[35],data2[36],data2[37],data2[38]);//Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[39],data2[40],data2[41],data2[42]);//Weapon_slot12,Ammo_slot0,Ammo_slot1,Ammo_slot2
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[43],data2[44],data2[45],data2[46]);//Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6
-						format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, data2[47],data2[48],data2[49],data2[50]);//Ammo_slot7,Ammo_slot8,Ammo_slot9,Ammo_slot10
-						format(strdln, sizeof(strdln), "%s%d,%d)", strdln, data2[51],data2[52]);//Ammo_slot11,Ammo_slot12
-						db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
-					}
-					if(conakk == 2)//если аккаунт был зарегистрирован в БД, то:
-					{
-						format(strdln, sizeof(strdln), "UPDATE Players SET Key = '%s',TDReg = '%s',",igkey,tdreg);//создаём запрос БД
-						format(strdln, sizeof(strdln), "%sDEndConD = %d,DEndConM = %d,DEndConY = %d,", strdln, dddata2[0],dddata2[1],dddata2[2]);
-						format(strdln, sizeof(strdln), "%sIPAdr = '%s',MinLog = %d,", strdln, adrip,data2[0]);
-						format(strdln, sizeof(strdln), "%sAdminLevel = %d,AdminShadow = %d,", strdln, data2[1],data2[2]);
-						format(strdln, sizeof(strdln), "%sAdminLive = %d,", strdln, data2[3]);
-						format(strdln, sizeof(strdln), "%sPrison = %d,Prisonsec = %d,", strdln, data2[5],data2[6]);
-						format(strdln, sizeof(strdln), "%sMuted = %d,Mutedsec = %d,", strdln, data2[7],data2[8]);
-						format(strdln, sizeof(strdln), "%sMoney = %d,Kills = %d,", strdln, data2[9],data2[10]);
-						format(strdln, sizeof(strdln), "%sDeaths = %d,VIP = %d,", strdln, data2[11],data2[12]);
-						format(strdln, sizeof(strdln), "%sLock = %d,Gang = %d,GangLvl = %d ", strdln, data2[13],data2[14],data2[15]);
-						format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, impdatas[0]);
-						db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
-					}
+					new strdln[3000];
+					format(strdln, sizeof(strdln), "UPDATE Players SET Key = '%s',",admData[MAX_PLAYERS - 1][dKey]);//создаём запрос БД
+					format(strdln, sizeof(strdln), "%sAdminLevel = %d,AdminShadow = %d,", strdln, admData[MAX_PLAYERS - 1][dAdmin],admData[MAX_PLAYERS - 1][dAdmshad]);
+					format(strdln, sizeof(strdln), "%sAdminLive = %d,Prison = %d,", strdln, admData[MAX_PLAYERS - 1][dAdmlive],admData[MAX_PLAYERS - 1][dPrison]);
+					format(strdln, sizeof(strdln), "%sPrisonsec = %d,Muted = %d,", strdln, admData[MAX_PLAYERS - 1][dPrisonsec],admData[MAX_PLAYERS - 1][dMuted]);
+					format(strdln, sizeof(strdln), "%sMutedsec = %d,Money = %d,", strdln, admData[MAX_PLAYERS - 1][dMutedsec],admData[MAX_PLAYERS - 1][dMoney]);
+					format(strdln, sizeof(strdln), "%sVIP = %d,Lock = %d,", strdln, admData[MAX_PLAYERS - 1][dVIP],admData[MAX_PLAYERS - 1][dLock]);
+					format(strdln, sizeof(strdln), "%sGang = %d,GangLvl = %d ", strdln, admData[MAX_PLAYERS - 1][dGang],admData[MAX_PLAYERS - 1][dGangLvl]);
+					format(strdln, sizeof(strdln), "%sWHERE (Name = '%s')", strdln, impdatas[0]);
+					db_query(playerdb, strdln);//отправляем запрос на обновление (перезапись) аккаунта в БД
 #endif
 				}
 				else//если аккаунта НЕ существует, то:
@@ -39860,6 +40707,16 @@ public RepairCar()
 					impcon[13] = 0;
 				}
 			}
+		}
+		if(impcon[12] == 2)
+		{
+			strdel(impdatas[3], 0, 128);
+			strcat(impdatas[3], "ок, игрок онлайн");
+		}
+		if(impcon[12] == 3)
+		{
+			strdel(impdatas[3], 0, 128);
+			strcat(impdatas[3], "ок, игрок оффлайн");
 		}
 		if(impcon[13] == 0)//если аккаунта не существует, то:
 		{
@@ -39871,8 +40728,7 @@ public RepairCar()
 		{
 			fremove(impf);//удаляем файл-ответа
 		}
-		format(impf, 256, "players/aimport/%i-ret.txt", impdd2);//создаём файла-ответа
-		impfile = ini_createFile(impf);
+		impfile = ini_createFile(impf);//создаём файла-ответа
 		if(impfile >= 0)
 		{
 			ini_setString(impfile, "ret", impdatas[3]);
@@ -39997,6 +40853,34 @@ public InpTxtControl(string[])//контроль вводимого текста на посторонние символы
 	{
 		if(string[i] < 32 || string[i] == 37 || string[i] == 126 ||
 		string[i] == 127 || string[i] == 152 || string[i] == 160) { dopper = 0; }
+	}
+	return dopper;
+}
+
+forward InpNameControl(string[]);
+public InpNameControl(string[])//контроль вводимого имени аккаунта на посторонние символы
+{
+	new dln, dopper;
+	dln = strlen(string);
+	dopper = 1;
+	for(new i = 0; i < dln; i++)
+	{
+		if(string[i] == 32 || string[i] == 37 || string[i] == 126) { dopper = 0; }
+	}
+	return dopper;
+}
+
+forward FngpciControl(string[]);
+public FngpciControl(string[])//контроль gpci-тега на ошибки
+{
+	new dln, dopper;
+	dln = strlen(string);
+	dopper = 1;
+	if(dln != 40) { return 0; }
+	for(new i = 0; i < dln; i++)
+	{
+		if(string[i] < 48 || (string[i] > 57 && string[i] < 65) ||
+		string[i] > 70) { dopper = 0; }
 	}
 	return dopper;
 }
@@ -40257,12 +41141,2242 @@ public ContSobj()//загрузка потоковых объектов, 3D-текстов, и текст-дравов серве
 	return 1;
 }
 
+forward AccDataLoadUn(playerid);
+public AccDataLoadUn(playerid)
+{
+	new string[256];
+	format(string, sizeof(string), "players/%s.ini", dAccName[playerid]);
+
+#if (MOD90INS == 0)
+	if(!fexist(string))
+	{
+		return 0;//аккаунта НЕ существует
+	}
+	new File: UserFile = fopen(string, io_read);//чтение аккаунта
+	new key[ 256 ] , val[ 256 ];
+	new Data[ 256 ];
+	while ( fread( UserFile , Data , sizeof( Data ) ) )
+	{
+		key = ini_GetKey( Data );
+		if( strcmp( key , "Key" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dKey], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "TDReg" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dTDReg], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "DEndConD" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConD] = strval( val ); }
+		if( strcmp( key , "DEndConM" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConM] = strval( val ); }
+		if( strcmp( key , "DEndConY" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConY] = strval( val ); }
+		if( strcmp( key , "IPAdr" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dIPAdr], val, 0, strlen(val)-1, 128); }
+		if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMinlog] = strval( val ); }
+	    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmin] = strval( val ); }
+	    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmshad] = strval( val ); }
+	    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmlive] = strval( val ); }
+		if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dReg] = strval( val ); }
+		if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrison] = strval( val ); }
+		if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrisonsec] = strval( val ); }
+		if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMuted] = strval( val ); }
+		if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMutedsec] = strval( val ); }
+		if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMoney] = strval( val ); }
+		if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dKills] = strval( val ); }
+		if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDeaths] = strval( val ); }
+		if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dVIP] = strval( val ); }
+		if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dLock] = strval( val ); }
+		if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGang] = strval( val ); }
+		if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGangLvl] = strval( val ); }
+//		if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL] = strval( val ); }
+//		if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL_SILENCED] = strval( val ); }
+//		if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDESERT_EAGLE] = strval( val ); }
+//		if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSHOTGUN] = strval( val ); }
+//		if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSAWNOFF_SHOTGUN] = strval( val ); }
+//		if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSPAS12_SHOTGUN] = strval( val ); }
+//		if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMICRO_UZI] = strval( val ); }
+//		if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMP5] = strval( val ); }
+//		if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAK47] = strval( val ); }
+//		if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dM4] = strval( val ); }
+//		if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSNIPERRIFLE] = strval( val ); }
+		if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot0] = strval( val ); }
+		if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot1] = strval( val ); }
+		if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot2] = strval( val ); }
+		if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot3] = strval( val ); }
+		if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot4] = strval( val ); }
+		if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot5] = strval( val ); }
+		if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot6] = strval( val ); }
+		if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot7] = strval( val ); }
+		if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot8] = strval( val ); }
+		if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot9] = strval( val ); }
+		if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot10] = strval( val ); }
+		if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot11] = strval( val ); }
+		if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot12] = strval( val ); }
+		if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot0] = strval( val ); }
+		if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot1] = strval( val ); }
+		if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot2] = strval( val ); }
+		if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot3] = strval( val ); }
+		if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot4] = strval( val ); }
+		if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot5] = strval( val ); }
+		if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot6] = strval( val ); }
+		if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot7] = strval( val ); }
+		if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot8] = strval( val ); }
+		if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot9] = strval( val ); }
+		if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot10] = strval( val ); }
+		if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot11] = strval( val ); }
+		if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot12] = strval( val ); }
+		if( strcmp( key , "Pass_data1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data1], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_inout1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout1], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_ver1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver1], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "Pass_count1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count1] = strval( val ); }
+		if( strcmp( key , "Pass_data2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data2], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_inout2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout2], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_ver2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver2], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "Pass_count2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count2] = strval( val ); }
+		if( strcmp( key , "Pass_data3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data3], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_inout3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout3], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_ver3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver3], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "Pass_count3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count3] = strval( val ); }
+		if( strcmp( key , "Pass_data4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data4], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_inout4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout4], val, 0, strlen(val)-1, 64); }
+		if( strcmp( key , "Pass_ver4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver4], val, 0, strlen(val)-1, 32); }
+		if( strcmp( key , "Pass_count4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count4] = strval( val ); }
+		if( strcmp( key , "PassMode" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassMode] = strval( val ); }
+		if( strcmp( key , "PassDel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassDel] = strval( val ); }
+		if( strcmp( key , "PassLock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassLock] = strval( val ); }
+		if( strcmp( key , "PassError" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassError] = strval( val ); }
+	}
+	fclose(UserFile);
+//эти строки добавлены для совместимости с ранней версией мода !!!
+//--------------------------------- начало -------------------------------------
+	if(strlen(admData[playerid][dPass_data1]) == 0) { strmid(admData[playerid][dPass_data1], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_inout1]) == 0) { strmid(admData[playerid][dPass_inout1], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_ver1]) == 0) { strmid(admData[playerid][dPass_ver1], "---", 0, 3, 32); }
+	if(strlen(admData[playerid][dPass_data2]) == 0) { strmid(admData[playerid][dPass_data2], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_inout2]) == 0) { strmid(admData[playerid][dPass_inout2], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_ver2]) == 0) { strmid(admData[playerid][dPass_ver2], "---", 0, 3, 32); }
+	if(strlen(admData[playerid][dPass_data3]) == 0) { strmid(admData[playerid][dPass_data3], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_inout3]) == 0) { strmid(admData[playerid][dPass_inout3], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_ver3]) == 0) { strmid(admData[playerid][dPass_ver3], "---", 0, 3, 32); }
+	if(strlen(admData[playerid][dPass_data4]) == 0) { strmid(admData[playerid][dPass_data4], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_inout4]) == 0) { strmid(admData[playerid][dPass_inout4], "---", 0, 3, 64); }
+	if(strlen(admData[playerid][dPass_ver4]) == 0) { strmid(admData[playerid][dPass_ver4], "---", 0, 3, 32); }
+//---------------------------------- конец -------------------------------------
+#endif
+#if (MOD90INS == 1)
+	new ssss[256];
+	if(fexist(string))//если аккаунт зарегистрирован в fopen, то:
+	{
+		new File: UserFile = fopen(string, io_read);//чтение аккаунта
+	    new key[ 256 ] , val[ 256 ];
+	    new Data[ 256 ];
+		while ( fread( UserFile , Data , sizeof( Data ) ) )
+		{
+			key = ini_GetKey( Data );
+			if( strcmp( key , "Key" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dKey], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "TDReg" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dTDReg], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "DEndConD" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConD] = strval( val ); }
+			if( strcmp( key , "DEndConM" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConM] = strval( val ); }
+			if( strcmp( key , "DEndConY" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dEndConY] = strval( val ); }
+			if( strcmp( key , "IPAdr" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dIPAdr], val, 0, strlen(val)-1, 128); }
+			if( strcmp( key , "MinLog" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMinlog] = strval( val ); }
+		    if( strcmp( key , "AdminLevel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmin] = strval( val ); }
+		    if( strcmp( key , "AdminShadow" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmshad] = strval( val ); }
+		    if( strcmp( key , "AdminLive" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAdmlive] = strval( val ); }
+			if( strcmp( key , "Registered" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dReg] = strval( val ); }
+			if( strcmp( key , "Prison" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrison] = strval( val ); }
+			if( strcmp( key , "Prisonsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPrisonsec] = strval( val ); }
+			if( strcmp( key , "Muted" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMuted] = strval( val ); }
+			if( strcmp( key , "Mutedsec" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMutedsec] = strval( val ); }
+			if( strcmp( key , "Money" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMoney] = strval( val ); }
+			if( strcmp( key , "Kills" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dKills] = strval( val ); }
+			if( strcmp( key , "Deaths" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDeaths] = strval( val ); }
+			if( strcmp( key , "VIP" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dVIP] = strval( val ); }
+			if( strcmp( key , "Lock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dLock] = strval( val ); }
+			if( strcmp( key , "Gang" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGang] = strval( val ); }
+			if( strcmp( key , "GangLvl" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dGangLvl] = strval( val ); }
+//			if( strcmp( key , "PISTOL" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL] = strval( val ); }
+//			if( strcmp( key , "PISTOL_SILENCED" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPISTOL_SILENCED] = strval( val ); }
+//			if( strcmp( key , "DESERT_EAGLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dDESERT_EAGLE] = strval( val ); }
+//			if( strcmp( key , "SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSHOTGUN] = strval( val ); }
+//			if( strcmp( key , "SAWNOFF_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSAWNOFF_SHOTGUN] = strval( val ); }
+//			if( strcmp( key , "SPAS12_SHOTGUN" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSPAS12_SHOTGUN] = strval( val ); }
+//			if( strcmp( key , "MICRO_UZI" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMICRO_UZI] = strval( val ); }
+//			if( strcmp( key , "MP5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dMP5] = strval( val ); }
+//			if( strcmp( key , "AK47" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAK47] = strval( val ); }
+//			if( strcmp( key , "M4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dM4] = strval( val ); }
+//			if( strcmp( key , "SNIPERRIFLE" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dSNIPERRIFLE] = strval( val ); }
+			if( strcmp( key , "Weapon_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot0] = strval( val ); }
+			if( strcmp( key , "Weapon_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot1] = strval( val ); }
+			if( strcmp( key , "Weapon_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot2] = strval( val ); }
+			if( strcmp( key , "Weapon_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot3] = strval( val ); }
+			if( strcmp( key , "Weapon_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot4] = strval( val ); }
+			if( strcmp( key , "Weapon_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot5] = strval( val ); }
+			if( strcmp( key , "Weapon_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot6] = strval( val ); }
+			if( strcmp( key , "Weapon_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot7] = strval( val ); }
+			if( strcmp( key , "Weapon_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot8] = strval( val ); }
+			if( strcmp( key , "Weapon_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot9] = strval( val ); }
+			if( strcmp( key , "Weapon_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot10] = strval( val ); }
+			if( strcmp( key , "Weapon_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot11] = strval( val ); }
+			if( strcmp( key , "Weapon_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dWeapon_slot12] = strval( val ); }
+			if( strcmp( key , "Ammo_slot0" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot0] = strval( val ); }
+			if( strcmp( key , "Ammo_slot1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot1] = strval( val ); }
+			if( strcmp( key , "Ammo_slot2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot2] = strval( val ); }
+			if( strcmp( key , "Ammo_slot3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot3] = strval( val ); }
+			if( strcmp( key , "Ammo_slot4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot4] = strval( val ); }
+			if( strcmp( key , "Ammo_slot5" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot5] = strval( val ); }
+			if( strcmp( key , "Ammo_slot6" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot6] = strval( val ); }
+			if( strcmp( key , "Ammo_slot7" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot7] = strval( val ); }
+			if( strcmp( key , "Ammo_slot8" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot8] = strval( val ); }
+			if( strcmp( key , "Ammo_slot9" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot9] = strval( val ); }
+			if( strcmp( key , "Ammo_slot10" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot10] = strval( val ); }
+			if( strcmp( key , "Ammo_slot11" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot11] = strval( val ); }
+			if( strcmp( key , "Ammo_slot12" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dAmmo_slot12] = strval( val ); }
+			if( strcmp( key , "Pass_data1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data1], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout1], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver1" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver1], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count1" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count1] = strval( val ); }
+			if( strcmp( key , "Pass_data2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data2], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout2], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver2" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver2], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count2" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count2] = strval( val ); }
+			if( strcmp( key , "Pass_data3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data3], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout3], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver3" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver3], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count3" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count3] = strval( val ); }
+			if( strcmp( key , "Pass_data4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_data4], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_inout4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_inout4], val, 0, strlen(val)-1, 64); }
+			if( strcmp( key , "Pass_ver4" , true ) == 0 ) { val = ini_GetValue( Data ); strmid(admData[playerid][dPass_ver4], val, 0, strlen(val)-1, 32); }
+			if( strcmp( key , "Pass_count4" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPass_count4] = strval( val ); }
+			if( strcmp( key , "PassMode" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassMode] = strval( val ); }
+			if( strcmp( key , "PassDel" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassDel] = strval( val ); }
+			if( strcmp( key , "PassLock" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassLock] = strval( val ); }
+			if( strcmp( key , "PassError" , true ) == 0 ) { val = ini_GetValue( Data ); admData[playerid][dPassError] = strval( val ); }
+        }
+        fclose(UserFile);
+
+//эти строки добавлены для совместимости с ранней версией мода !!!
+//--------------------------------- начало -------------------------------------
+		if(strlen(admData[playerid][dPass_data1]) == 0) { strmid(admData[playerid][dPass_data1], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_inout1]) == 0) { strmid(admData[playerid][dPass_inout1], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_ver1]) == 0) { strmid(admData[playerid][dPass_ver1], "---", 0, 3, 32); }
+		if(strlen(admData[playerid][dPass_data2]) == 0) { strmid(admData[playerid][dPass_data2], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_inout2]) == 0) { strmid(admData[playerid][dPass_inout2], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_ver2]) == 0) { strmid(admData[playerid][dPass_ver2], "---", 0, 3, 32); }
+		if(strlen(admData[playerid][dPass_data3]) == 0) { strmid(admData[playerid][dPass_data3], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_inout3]) == 0) { strmid(admData[playerid][dPass_inout3], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_ver3]) == 0) { strmid(admData[playerid][dPass_ver3], "---", 0, 3, 32); }
+		if(strlen(admData[playerid][dPass_data4]) == 0) { strmid(admData[playerid][dPass_data4], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_inout4]) == 0) { strmid(admData[playerid][dPass_inout4], "---", 0, 3, 64); }
+		if(strlen(admData[playerid][dPass_ver4]) == 0) { strmid(admData[playerid][dPass_ver4], "---", 0, 3, 32); }
+//---------------------------------- конец -------------------------------------
+
+		format(ssss, sizeof(ssss), "DELETE FROM Players WHERE (Name = '%s')", dAccName[playerid]);//миграция аккаунта в БД, создаём запрос БД
+		db_query(playerdb, ssss);//отправляем запрос на удаление аккаунта (аккаунтов) из БД (если такой аккаунт (такие аккаунты) УЖЕ есть в БД)
+
+		new strdln[5000];
+		format(strdln, sizeof(strdln), "INSERT INTO Players (IDCopy,Name,Key,TDReg,DEndConD,DEndConM,DEndConY,IPAdr,MinLog,AdminLevel,");//создаём запрос БД
+		format(strdln, sizeof(strdln), "%sAdminShadow,AdminLive,Registered,Prison,Prisonsec,Muted,Mutedsec,Money,Kills,Deaths,VIP,Lock,Gang,", strdln);
+		format(strdln, sizeof(strdln), "%sGangLvl,Weapon_slot0,Weapon_slot1,Weapon_slot2,Weapon_slot3,Weapon_slot4,Weapon_slot5,Weapon_slot6,", strdln);
+		format(strdln, sizeof(strdln), "%sWeapon_slot7,Weapon_slot8,Weapon_slot9,Weapon_slot10,Weapon_slot11,Weapon_slot12,Ammo_slot0,", strdln);
+		format(strdln, sizeof(strdln), "%sAmmo_slot1,Ammo_slot2,Ammo_slot3,Ammo_slot4,Ammo_slot5,Ammo_slot6,Ammo_slot7,Ammo_slot8,Ammo_slot9,", strdln);
+		format(strdln, sizeof(strdln), "%sAmmo_slot10,Ammo_slot11,Ammo_slot12,Pass_data1,Pass_inout1,Pass_ver1,Pass_count1,Pass_data2,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout2,Pass_ver2,Pass_count2,Pass_data3,Pass_inout3,Pass_ver3,Pass_count3,Pass_data4,", strdln);
+		format(strdln, sizeof(strdln), "%sPass_inout4,Pass_ver4,Pass_count4,PassMode,PassDel,PassLock,PassError) ", strdln);
+		format(strdln, sizeof(strdln), "%sVALUES (1,'%s','%s','%s',", strdln, dAccName[playerid],admData[playerid][dKey],admData[playerid][dTDReg]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dEndConD],admData[playerid][dEndConM],admData[playerid][dEndConY]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,%d,", strdln, admData[playerid][dIPAdr],admData[playerid][dMinlog],admData[playerid][dAdmin]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAdmshad],admData[playerid][dAdmlive],admData[playerid][dReg]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dPrison],admData[playerid][dPrisonsec],admData[playerid][dMuted]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dMutedsec],admData[playerid][dMoney],admData[playerid][dKills]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dDeaths],admData[playerid][dVIP],admData[playerid][dLock]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dGang],admData[playerid][dGangLvl],admData[playerid][dWeapon_slot0]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot1],admData[playerid][dWeapon_slot2],admData[playerid][dWeapon_slot3]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot4],admData[playerid][dWeapon_slot5],admData[playerid][dWeapon_slot6]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot7],admData[playerid][dWeapon_slot8],admData[playerid][dWeapon_slot9]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dWeapon_slot10],admData[playerid][dWeapon_slot11],admData[playerid][dWeapon_slot12]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot0],admData[playerid][dAmmo_slot1],admData[playerid][dAmmo_slot2]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot3],admData[playerid][dAmmo_slot4],admData[playerid][dAmmo_slot5]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot6],admData[playerid][dAmmo_slot7],admData[playerid][dAmmo_slot8]);
+		format(strdln, sizeof(strdln), "%s%d,%d,%d,", strdln, admData[playerid][dAmmo_slot9],admData[playerid][dAmmo_slot10],admData[playerid][dAmmo_slot11]);
+		format(strdln, sizeof(strdln), "%s%d,'%s','%s',", strdln, admData[playerid][dAmmo_slot12],admData[playerid][dPass_data1],admData[playerid][dPass_inout1]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,'%s',", strdln, admData[playerid][dPass_ver1],admData[playerid][dPass_count1],admData[playerid][dPass_data2]);
+		format(strdln, sizeof(strdln), "%s'%s','%s',%d,", strdln, admData[playerid][dPass_inout2],admData[playerid][dPass_ver2],admData[playerid][dPass_count2]);
+		format(strdln, sizeof(strdln), "%s'%s','%s','%s',", strdln, admData[playerid][dPass_data3],admData[playerid][dPass_inout3],admData[playerid][dPass_ver3]);
+		format(strdln, sizeof(strdln), "%s%d,'%s','%s',", strdln, admData[playerid][dPass_count3],admData[playerid][dPass_data4],admData[playerid][dPass_inout4]);
+		format(strdln, sizeof(strdln), "%s'%s',%d,%d,", strdln, admData[playerid][dPass_ver4],admData[playerid][dPass_count4],admData[playerid][dPassMode]);
+		format(strdln, sizeof(strdln), "%s%d,%d,", strdln, admData[playerid][dPassDel],admData[playerid][dPassLock]);
+		format(strdln, sizeof(strdln), "%s%d)", strdln, admData[playerid][dPassError]);
+		db_query(playerdb, strdln);//отправляем запрос на добавление нового аккаунта в БД
+
+		if(fexist(string))
+		{
+			fremove(string);//удаляем аккаунт из fopen
+		}
+	}
+	else//иначе: (если аккаунт зарегистрирован в SQLite)
+	{
+		format(ssss, sizeof(ssss), "SELECT * FROM Players WHERE (Name = '%s')", dAccName[playerid]);//создаём запрос БД
+		querydb[playerid] = db_query(playerdb, ssss);//отправляем запрос БД
+		if(db_num_rows(querydb[playerid]) == 0)//переведём результат запроса в число найденных строк в БД
+		{//если число строк = 0 (такого аккаунта в БД нет), то - аккаунт НЕ зарегистрирован в БД
+			db_free_result(querydb[playerid]);//очищаем результат запроса БД
+			return 0;//аккаунта НЕ существует
+		}
+		else//иначе: (если аккаунт зарегистрирован в БД)
+		{
+			new buffer[64];//читаем данные из БД
+			db_get_field(querydb[playerid], 2, admData[playerid][dKey], 32);
+			db_get_field(querydb[playerid], 3, admData[playerid][dTDReg], 32);
+			db_get_field(querydb[playerid], 4, buffer, 64); admData[playerid][dEndConD] = strval(buffer);
+			db_get_field(querydb[playerid], 5, buffer, 64); admData[playerid][dEndConM] = strval(buffer);
+			db_get_field(querydb[playerid], 6, buffer, 64); admData[playerid][dEndConY] = strval(buffer);
+			db_get_field(querydb[playerid], 7, admData[playerid][dIPAdr], 128);
+			db_get_field(querydb[playerid], 8, buffer, 64); admData[playerid][dMinlog] = strval(buffer);
+			db_get_field(querydb[playerid], 9, buffer, 64); admData[playerid][dAdmin] = strval(buffer);
+			db_get_field(querydb[playerid], 10, buffer, 64); admData[playerid][dAdmshad] = strval(buffer);
+			db_get_field(querydb[playerid], 11, buffer, 64); admData[playerid][dAdmlive] = strval(buffer);
+			db_get_field(querydb[playerid], 12, buffer, 64); admData[playerid][dReg] = strval(buffer);
+			db_get_field(querydb[playerid], 13, buffer, 64); admData[playerid][dPrison] = strval(buffer);
+			db_get_field(querydb[playerid], 14, buffer, 64); admData[playerid][dPrisonsec] = strval(buffer);
+			db_get_field(querydb[playerid], 15, buffer, 64); admData[playerid][dMuted] = strval(buffer);
+			db_get_field(querydb[playerid], 16, buffer, 64); admData[playerid][dMutedsec] = strval(buffer);
+			db_get_field(querydb[playerid], 17, buffer, 64); admData[playerid][dMoney] = strval(buffer);
+			db_get_field(querydb[playerid], 18, buffer, 64); admData[playerid][dKills] = strval(buffer);
+			db_get_field(querydb[playerid], 19, buffer, 64); admData[playerid][dDeaths] = strval(buffer);
+			db_get_field(querydb[playerid], 20, buffer, 64); admData[playerid][dVIP] = strval(buffer);
+			db_get_field(querydb[playerid], 21, buffer, 64); admData[playerid][dLock] = strval(buffer);
+			db_get_field(querydb[playerid], 22, buffer, 64); admData[playerid][dGang] = strval(buffer);
+			db_get_field(querydb[playerid], 23, buffer, 64); admData[playerid][dGangLvl] = strval(buffer);
+			db_get_field(querydb[playerid], 24, buffer, 64); admData[playerid][dWeapon_slot0] = strval(buffer);
+			db_get_field(querydb[playerid], 25, buffer, 64); admData[playerid][dWeapon_slot1] = strval(buffer);
+			db_get_field(querydb[playerid], 26, buffer, 64); admData[playerid][dWeapon_slot2] = strval(buffer);
+			db_get_field(querydb[playerid], 27, buffer, 64); admData[playerid][dWeapon_slot3] = strval(buffer);
+			db_get_field(querydb[playerid], 28, buffer, 64); admData[playerid][dWeapon_slot4] = strval(buffer);
+			db_get_field(querydb[playerid], 29, buffer, 64); admData[playerid][dWeapon_slot5] = strval(buffer);
+			db_get_field(querydb[playerid], 30, buffer, 64); admData[playerid][dWeapon_slot6] = strval(buffer);
+			db_get_field(querydb[playerid], 31, buffer, 64); admData[playerid][dWeapon_slot7] = strval(buffer);
+			db_get_field(querydb[playerid], 32, buffer, 64); admData[playerid][dWeapon_slot8] = strval(buffer);
+			db_get_field(querydb[playerid], 33, buffer, 64); admData[playerid][dWeapon_slot9] = strval(buffer);
+			db_get_field(querydb[playerid], 34, buffer, 64); admData[playerid][dWeapon_slot10] = strval(buffer);
+			db_get_field(querydb[playerid], 35, buffer, 64); admData[playerid][dWeapon_slot11] = strval(buffer);
+			db_get_field(querydb[playerid], 36, buffer, 64); admData[playerid][dWeapon_slot12] = strval(buffer);
+			db_get_field(querydb[playerid], 37, buffer, 64); admData[playerid][dAmmo_slot0] = strval(buffer);
+			db_get_field(querydb[playerid], 38, buffer, 64); admData[playerid][dAmmo_slot1] = strval(buffer);
+			db_get_field(querydb[playerid], 39, buffer, 64); admData[playerid][dAmmo_slot2] = strval(buffer);
+			db_get_field(querydb[playerid], 40, buffer, 64); admData[playerid][dAmmo_slot3] = strval(buffer);
+			db_get_field(querydb[playerid], 41, buffer, 64); admData[playerid][dAmmo_slot4] = strval(buffer);
+			db_get_field(querydb[playerid], 42, buffer, 64); admData[playerid][dAmmo_slot5] = strval(buffer);
+			db_get_field(querydb[playerid], 43, buffer, 64); admData[playerid][dAmmo_slot6] = strval(buffer);
+			db_get_field(querydb[playerid], 44, buffer, 64); admData[playerid][dAmmo_slot7] = strval(buffer);
+			db_get_field(querydb[playerid], 45, buffer, 64); admData[playerid][dAmmo_slot8] = strval(buffer);
+			db_get_field(querydb[playerid], 46, buffer, 64); admData[playerid][dAmmo_slot9] = strval(buffer);
+			db_get_field(querydb[playerid], 47, buffer, 64); admData[playerid][dAmmo_slot10] = strval(buffer);
+			db_get_field(querydb[playerid], 48, buffer, 64); admData[playerid][dAmmo_slot11] = strval(buffer);
+			db_get_field(querydb[playerid], 49, buffer, 64); admData[playerid][dAmmo_slot12] = strval(buffer);
+			db_get_field(querydb[playerid], 50, admData[playerid][dPass_data1], 64);
+			db_get_field(querydb[playerid], 51, admData[playerid][dPass_inout1], 64);
+			db_get_field(querydb[playerid], 52, admData[playerid][dPass_ver1], 32);
+			db_get_field(querydb[playerid], 53, buffer, 64); admData[playerid][dPass_count1] = strval(buffer);
+			db_get_field(querydb[playerid], 54, admData[playerid][dPass_data2], 64);
+			db_get_field(querydb[playerid], 55, admData[playerid][dPass_inout2], 64);
+			db_get_field(querydb[playerid], 56, admData[playerid][dPass_ver2], 32);
+			db_get_field(querydb[playerid], 57, buffer, 64); admData[playerid][dPass_count2] = strval(buffer);
+			db_get_field(querydb[playerid], 58, admData[playerid][dPass_data3], 64);
+			db_get_field(querydb[playerid], 59, admData[playerid][dPass_inout3], 64);
+			db_get_field(querydb[playerid], 60, admData[playerid][dPass_ver3], 32);
+			db_get_field(querydb[playerid], 61, buffer, 64); admData[playerid][dPass_count3] = strval(buffer);
+			db_get_field(querydb[playerid], 62, admData[playerid][dPass_data4], 64);
+			db_get_field(querydb[playerid], 63, admData[playerid][dPass_inout4], 64);
+			db_get_field(querydb[playerid], 64, admData[playerid][dPass_ver4], 32);
+			db_get_field(querydb[playerid], 65, buffer, 64); admData[playerid][dPass_count4] = strval(buffer);
+			db_get_field(querydb[playerid], 66, buffer, 64); admData[playerid][dPassMode] = strval(buffer);
+			db_get_field(querydb[playerid], 67, buffer, 64); admData[playerid][dPassDel] = strval(buffer);
+			db_get_field(querydb[playerid], 68, buffer, 64); admData[playerid][dPassLock] = strval(buffer);
+			db_get_field(querydb[playerid], 69, buffer, 64); admData[playerid][dPassError] = strval(buffer);
+			db_free_result(querydb[playerid]);//очищаем результат запроса БД
+		}
+	}
+#endif
+	if(admData[playerid][dPassMode] != MOD4DINS)//если установлен новый режим паспортов, то:
+	{//очистка всех паспортов
+		strmid(admData[playerid][dPass_data1], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_inout1], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_ver1], "---", 0, 3, 32);
+		admData[playerid][dPass_count1] = 0;
+		strmid(admData[playerid][dPass_data2], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_inout2], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_ver2], "---", 0, 3, 32);
+		admData[playerid][dPass_count2] = 0;
+		strmid(admData[playerid][dPass_data3], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_inout3], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_ver3], "---", 0, 3, 32);
+		admData[playerid][dPass_count3] = 0;
+		strmid(admData[playerid][dPass_data4], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_inout4], "---", 0, 3, 64);
+		strmid(admData[playerid][dPass_ver4], "---", 0, 3, 32);
+		admData[playerid][dPass_count4] = 0;
+		admData[playerid][dPassMode] = MOD4DINS;
+		admData[playerid][dPassDel] = 0;
+		admData[playerid][dPassLock] = 0;
+		admData[playerid][dPassError] = 0;
+	}
+	if(admData[playerid][dAdmin] != 0)//если админка была изменена в аккаунте или в БД, то:
+	{
+		AdmUpdate(dAccName[playerid], admData[playerid][dAdmin], 4);
+	}
+	return 1;//аккаунт существует
+}
+
+forward AccDataSaveFo(playerid);
+public AccDataSaveFo(playerid)
+{
+	new string[256];
+	format(string, sizeof(string), "players/%s.ini", dAccName[playerid]);
+
+	new File: hFile = fopen(string, io_write);
+	if (hFile)
+	{
+		new var[128];
+		format(var, 128, "Key=%s\n",admData[playerid][dKey]);fwrite(hFile, var);
+		format(var, 128, "TDReg=%s\n",admData[playerid][dTDReg]);fwrite(hFile, var);
+		format(var, 128, "DEndConD=%d\n",admData[playerid][dEndConD]);fwrite(hFile, var);
+		format(var, 128, "DEndConM=%d\n",admData[playerid][dEndConM]);fwrite(hFile, var);
+		format(var, 128, "DEndConY=%d\n",admData[playerid][dEndConY]);fwrite(hFile, var);
+		format(var, 128, "IPAdr=%s\n",admData[playerid][dIPAdr]);fwrite(hFile, var);
+		format(var, 128, "MinLog=%d\n",admData[playerid][dMinlog]);fwrite(hFile, var);
+		format(var, 128, "AdminLevel=%d\n",admData[playerid][dAdmin]);fwrite(hFile, var);
+		format(var, 128, "AdminShadow=%d\n",admData[playerid][dAdmshad]);fwrite(hFile, var);
+		format(var, 128, "AdminLive=%d\n",admData[playerid][dAdmlive]);fwrite(hFile, var);
+		format(var, 128, "Registered=%d\n",admData[playerid][dReg]);fwrite(hFile, var);
+		format(var, 128, "Prison=%d\n",admData[playerid][dPrison]);fwrite(hFile, var);
+		format(var, 128, "Prisonsec=%d\n",admData[playerid][dPrisonsec]);fwrite(hFile, var);
+		format(var, 128, "Muted=%d\n",admData[playerid][dMuted]);fwrite(hFile, var);
+		format(var, 128, "Mutedsec=%d\n",admData[playerid][dMutedsec]);fwrite(hFile, var);
+		format(var, 128, "Money=%d\n",admData[playerid][dMoney]);fwrite(hFile, var);
+		format(var, 128, "Kills=%d\n",admData[playerid][dKills]);fwrite(hFile, var);
+		format(var, 128, "Deaths=%d\n",admData[playerid][dDeaths]);fwrite(hFile, var);
+		format(var, 128, "VIP=%d\n",admData[playerid][dVIP]);fwrite(hFile, var);
+		format(var, 128, "Lock=%d\n",admData[playerid][dLock]);fwrite(hFile, var);
+		format(var, 128, "Gang=%d\n",admData[playerid][dGang]);fwrite(hFile, var);
+		format(var, 128, "GangLvl=%d\n",admData[playerid][dGangLvl]);fwrite(hFile, var);
+//		format(var, 128, "PISTOL=%d\n",admData[playerid][dPISTOL]);fwrite(hFile, var);
+//		format(var, 128, "PISTOL_SILENCED=%d\n",admData[playerid][dPISTOL_SILENCED]);fwrite(hFile, var);
+//		format(var, 128, "DESERT_EAGLE=%d\n",admData[playerid][dDESERT_EAGLE]);fwrite(hFile, var);
+//		format(var, 128, "SHOTGUN=%d\n",admData[playerid][dSHOTGUN]);fwrite(hFile, var);
+//		format(var, 128, "SAWNOFF_SHOTGUN=%d\n",admData[playerid][dSAWNOFF_SHOTGUN]);fwrite(hFile, var);
+//		format(var, 128, "SPAS12_SHOTGUN=%d\n",admData[playerid][dSPAS12_SHOTGUN]);fwrite(hFile, var);
+//		format(var, 128, "MICRO_UZI=%d\n",admData[playerid][dMICRO_UZI]);fwrite(hFile, var);
+//		format(var, 128, "MP5=%d\n",admData[playerid][dMP5]);fwrite(hFile, var);
+//		format(var, 128, "AK47=%d\n",admData[playerid][dAK47]);fwrite(hFile, var);
+//		format(var, 128, "M4=%d\n",admData[playerid][dM4]);fwrite(hFile, var);
+//		format(var, 128, "SNIPERRIFLE=%d\n",admData[dlayerid][pSNIPERRIFLE]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot0=%d\n",admData[playerid][dWeapon_slot0]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot1=%d\n",admData[playerid][dWeapon_slot1]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot2=%d\n",admData[playerid][dWeapon_slot2]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot3=%d\n",admData[playerid][dWeapon_slot3]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot4=%d\n",admData[playerid][dWeapon_slot4]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot5=%d\n",admData[playerid][dWeapon_slot5]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot6=%d\n",admData[playerid][dWeapon_slot6]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot7=%d\n",admData[playerid][dWeapon_slot6]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot8=%d\n",admData[playerid][dWeapon_slot8]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot9=%d\n",admData[playerid][dWeapon_slot9]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot10=%d\n",admData[playerid][dWeapon_slot10]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot11=%d\n",admData[playerid][dWeapon_slot11]);fwrite(hFile, var);
+		format(var, 128, "Weapon_slot12=%d\n",admData[playerid][dWeapon_slot12]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot0=%d\n",admData[playerid][dAmmo_slot0]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot1=%d\n",admData[playerid][dAmmo_slot1]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot2=%d\n",admData[playerid][dAmmo_slot2]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot3=%d\n",admData[playerid][dAmmo_slot3]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot4=%d\n",admData[playerid][dAmmo_slot4]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot5=%d\n",admData[playerid][dAmmo_slot5]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot6=%d\n",admData[playerid][dAmmo_slot6]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot7=%d\n",admData[playerid][dAmmo_slot7]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot8=%d\n",admData[playerid][dAmmo_slot8]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot9=%d\n",admData[playerid][dAmmo_slot9]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot10=%d\n",admData[playerid][dAmmo_slot10]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot11=%d\n",admData[playerid][dAmmo_slot11]);fwrite(hFile, var);
+		format(var, 128, "Ammo_slot12=%d\n",admData[playerid][dAmmo_slot12]);fwrite(hFile, var);
+		format(var, 128, "Pass_data1=%s\n",admData[playerid][dPass_data1]);fwrite(hFile, var);
+		format(var, 128, "Pass_inout1=%s\n",admData[playerid][dPass_inout1]);fwrite(hFile, var);
+		format(var, 128, "Pass_ver1=%s\n",admData[playerid][dPass_ver1]);fwrite(hFile, var);
+		format(var, 128, "Pass_count1=%d\n",admData[playerid][dPass_count1]);fwrite(hFile, var);
+		format(var, 128, "Pass_data2=%s\n",admData[playerid][dPass_data2]);fwrite(hFile, var);
+		format(var, 128, "Pass_inout2=%s\n",admData[playerid][dPass_inout2]);fwrite(hFile, var);
+		format(var, 128, "Pass_ver2=%s\n",admData[playerid][dPass_ver2]);fwrite(hFile, var);
+		format(var, 128, "Pass_count2=%d\n",admData[playerid][dPass_count2]);fwrite(hFile, var);
+		format(var, 128, "Pass_data3=%s\n",admData[playerid][dPass_data3]);fwrite(hFile, var);
+		format(var, 128, "Pass_inout3=%s\n",admData[playerid][dPass_inout3]);fwrite(hFile, var);
+		format(var, 128, "Pass_ver3=%s\n",admData[playerid][dPass_ver3]);fwrite(hFile, var);
+		format(var, 128, "Pass_count3=%d\n",admData[playerid][dPass_count3]);fwrite(hFile, var);
+		format(var, 128, "Pass_data4=%s\n",admData[playerid][dPass_data4]);fwrite(hFile, var);
+		format(var, 128, "Pass_inout4=%s\n",admData[playerid][dPass_inout4]);fwrite(hFile, var);
+		format(var, 128, "Pass_ver4=%s\n",admData[playerid][dPass_ver4]);fwrite(hFile, var);
+		format(var, 128, "Pass_count4=%d\n",admData[playerid][dPass_count4]);fwrite(hFile, var);
+		format(var, 128, "PassMode=%d\n",admData[playerid][dPassMode]);fwrite(hFile, var);
+		format(var, 128, "PassDel=%d\n",admData[playerid][dPassDel]);fwrite(hFile, var);
+		format(var, 128, "PassLock=%d\n",admData[playerid][dPassLock]);fwrite(hFile, var);
+		format(var, 128, "PassError=%d\n",admData[playerid][dPassError]);fwrite(hFile, var);
+		fclose(hFile);
+	}
+	return 1;
+}
+
+forward FnIPCon(ipgl[], ripd[4]);//конвертор + контроль IP-адреса на ошибки,
+public FnIPCon(ipgl[], ripd[4])//и на посторонние символы
+{
+	if(strlen(ipgl) < 7 || strlen(ipgl) > 15)//если длина IP-адреса за пределами, то:
+	{
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	new locip[32];//выходная строка
+	strdel(locip, 0, 32);//обнуляем выходную строку
+	new ind1 = 0;//обнуляем индекс входной строки
+	new ind2 = 0;//обнуляем индекс выходной строки
+	new count1 = 0;//обнуляем счётчик выходных строк
+	new count2 = 0;//обнуляем счётчик символов "точка"
+	new erind = 0;//обнуляем индекс ошибки
+	ripd[0] = -1;//задаём группам IP-адреса несуществующие значения
+	ripd[1] = -1;
+	ripd[2] = -1;
+	ripd[3] = -1;
+	while(ind1 < 128)
+	{
+		if(ipgl[ind1] == 0)//если найден конец входной стороки, то:
+		{
+			break;//завершаем цикл
+		}
+		if(ipgl[ind1] == '.')//если найден символ "точка", то:
+		{
+			locip[ind2] = 0;//делаем отметку конца выходной строки
+			ripd[count1] = strval(locip);//преобразование строки символов в число
+			ind2 = 0;//обнуляем индекс выходной строки
+			count1++;//счётчик выходных строк + 1
+			count2++;//счётчик символов "точка" + 1
+		}
+		if(ipgl[ind1] >= 48 && ipgl[ind1] <= 57)//если найдена цифра от 0 до 9, то:
+		{
+			locip[ind2] = ipgl[ind1];//копирование цифры в выходную строку
+			ind2++;//индекс выходной строки + 1
+		}
+		if(ipgl[ind1] < 46 || ipgl[ind1] == 47 || ipgl[ind1] > 57)
+		{//если найден запрещённый символ, то:
+			erind = 1;//устанавливаем индекс ошибки
+			break;//завершаем цикл
+		}
+		ind1++;//индекс входной строки + 1
+	}
+	locip[ind2] = 0;//делаем отметку конца выходной строки
+	ripd[count1] = strval(locip);//преобразование строки символов в число (для группы-4 IP-адреса)
+	if(erind == 1 || ripd[0] < 0 || ripd[0] > 255 || ripd[1] < 0 || ripd[1] > 255 ||
+	ripd[2] < 0 || ripd[2] > 255 || ripd[3] < 0 || ripd[3] > 255 || count2 != 3)
+	{//если установлен индекс ошибки, ИЛИ выходные данные за пределами, ИЛИ число символов "точка" НЕ равно 3, то:
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	return 1;//успешное завершение функции
+}
+
+forward Maskgpci(locdata[64]);
+public Maskgpci(locdata[64])
+{
+	new datad1[64];
+	format(datad1, sizeof(datad1), "62A74216E3815F419B65D170C0D790B71E615A93");
+	for(new i = 0; i < 40; i++)
+	{
+		if(datad1[i] >= 48 && datad1[i] <= 57) { datad1[i] = datad1[i] - 48; }
+		if(datad1[i] >= 65 && datad1[i] <= 70) { datad1[i] = datad1[i] - 55; }
+		if(locdata[i] >= 48 && locdata[i] <= 57) { locdata[i] = locdata[i] - 48; }
+		if(locdata[i] >= 65 && locdata[i] <= 70) { locdata[i] = locdata[i] - 55; }
+		locdata[i] = locdata[i] + datad1[i];
+		if(locdata[i] > 15) { locdata[i] = locdata[i] - 16; }
+		if(locdata[i] >= 0 && locdata[i] <= 9) { locdata[i] = locdata[i] + 48; }
+		if(locdata[i] >= 10 && locdata[i] <= 15) { locdata[i] = locdata[i] + 55; }
+	}
+	return 1;
+}
+
+stock FnGetClVers(playerid)//определение и контроль версии САМП-клиента
+{//на посторонние символы
+	new locdata[32], locdata22[32];
+	GetPlayerVersion(playerid, locdata, sizeof(locdata));
+	if(strlen(locdata) >= 1 && strlen(locdata) <= 15)//если в версии САМП-клиента от 1 до 15 символов, то:
+	{
+		format(locdata22, sizeof(locdata22), "[nocheck]");
+#if (MOD11INS == 1)
+		if(strcmp(locdata, "0.3e", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3e]"); }
+#endif
+#if (MOD11INS == 2)
+		if(strcmp(locdata, "0.3x-R1-2", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3x-R1-2]"); }
+#endif
+#if (MOD11INS == 3)
+		if(strcmp(locdata, "0.3z", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3z]"); }
+		if(strcmp(locdata, "0.3z-R2", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3z-R2]"); }
+#endif
+#if (MOD11INS == 4)
+		if(strcmp(locdata, "0.3.7", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3.7]"); }
+		if(strcmp(locdata, "0.3.7-R2", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3.7-R2]"); }
+		if(strcmp(locdata, "0.3.7-R3", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3.7-R3]"); }
+		if(strcmp(locdata, "0.3.DL-R1", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3.DL-R1]"); }
+		if(strcmp(locdata, "0.3.7-R4", false) == 0) { format(locdata22, sizeof(locdata22), "[0.3.7-R4]"); }
+#endif
+		switch(playconpass[playerid])
+		{
+		    case 0, 1:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data1], "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)
+				{//если обнаружена мобильная версия на базе Андроид, то:
+					format(locdata22, sizeof(locdata22), "%s [MOB]", locdata22);
+				}
+				else//иначе, если НЕ обнаружена мобильная версия на базе Андроид, то:
+				{
+					format(locdata22, sizeof(locdata22), "%s [PC]", locdata22);
+				}
+			}
+		    case 2:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data2], "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)
+				{//если обнаружена мобильная версия на базе Андроид, то:
+					format(locdata22, sizeof(locdata22), "%s [MOB]", locdata22);
+				}
+				else//иначе, если НЕ обнаружена мобильная версия на базе Андроид, то:
+				{
+					format(locdata22, sizeof(locdata22), "%s [PC]", locdata22);
+				}
+			}
+		    case 3:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data3], "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)
+				{//если обнаружена мобильная версия на базе Андроид, то:
+					format(locdata22, sizeof(locdata22), "%s [MOB]", locdata22);
+				}
+				else//иначе, если НЕ обнаружена мобильная версия на базе Андроид, то:
+				{
+					format(locdata22, sizeof(locdata22), "%s [PC]", locdata22);
+				}
+			}
+		    case 4:
+			{
+				if(strcmp(PlayerInfo[playerid][pPass_data4], "4FE72F14630A1B855BE3BAC8CF131CFBFCEF3323", false) == 0)
+				{//если обнаружена мобильная версия на базе Андроид, то:
+					format(locdata22, sizeof(locdata22), "%s [MOB]", locdata22);
+				}
+				else//иначе, если НЕ обнаружена мобильная версия на базе Андроид, то:
+				{
+					format(locdata22, sizeof(locdata22), "%s [PC]", locdata22);
+				}
+			}
+		}
+	}
+	else//иначе, если в версии САМП-клиента меньше 1 или больше 15 символов, то:
+	{
+		format(locdata22, sizeof(locdata22), "[nocheck] [nocheck]");
+	}
+	return locdata22;
+}
+
+#if (MOD4DINS >= 1)
+forward FnPrnPass(reg, playid, playtrg);
+public FnPrnPass(reg, playid, playtrg)//печать паспортов
+{
+//reg = 1 - печать для собственной статистики он-лайн игрока [pPass_ver1]
+//reg = 2 - печать для собственной статистики он-лайн админа [pPass_ver1][pPass_inout1][pPass_count1]
+//reg = 3 - печать для админа, данные статистики он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+//reg = 4 - печать для админа, данные статистики он-лайн админа [pPass_ver1]
+//reg = 5 - печать для админа /cvpass , данные от он-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+//reg = 6 - печать для админа /cvpass , данные от он-лайн админа [pPass_ver1]
+//reg = 7 - печать для админа /cvpass , данные от офф-лайн игрока [pPass_ver1][pPass_inout1][pPass_count1]
+//reg = 8 - печать для админа /cvpass , данные от офф-лайн админа [pPass_ver1]
+	new string[256];
+#endif
+#if (MOD4DINS == 1)
+	switch(reg)
+	{
+		case 1, 2:
+		{
+			if(playconpass[playid] == 1)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playid][pPass_ver1]);
+					case 2: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data1], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver1]);
+						case 2: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 3, 4, 5, 6:
+		{
+			if(playconpass[playtrg] == 1)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 4: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+					case 5: format(string, sizeof(string), " 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 6: format(string, sizeof(string), " 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data1], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 4: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+						case 5: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 6: format(string, sizeof(string), " 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 7, 8:
+		{
+			if(strcmp(admData[playid][dPass_data1], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver1], admData[playid][dPass_inout1], admData[playid][dPass_count1]);
+					case 8: format(string, sizeof(string), " 1 : зарегистрирован, %s", admData[playid][dPass_ver1]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+		}
+	}
+#endif
+#if (MOD4DINS == 2)
+	switch(reg)
+	{
+		case 1, 2:
+		{
+			if(playconpass[playid] == 1)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playid][pPass_ver1]);
+					case 2: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data1], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver1]);
+						case 2: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 2)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playid][pPass_ver2]);
+					case 2: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data2], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver2]);
+						case 2: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 3, 4, 5, 6:
+		{
+			if(playconpass[playtrg] == 1)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 4: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+					case 5: format(string, sizeof(string), " 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 6: format(string, sizeof(string), " 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data1], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 4: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+						case 5: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 6: format(string, sizeof(string), " 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 2)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 4: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+					case 5: format(string, sizeof(string), " 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 6: format(string, sizeof(string), " 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data2], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 4: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+						case 5: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 6: format(string, sizeof(string), " 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 7, 8:
+		{
+			if(strcmp(admData[playid][dPass_data1], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver1], admData[playid][dPass_inout1], admData[playid][dPass_count1]);
+					case 8: format(string, sizeof(string), " 1 : зарегистрирован, %s", admData[playid][dPass_ver1]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data2], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver2], admData[playid][dPass_inout2], admData[playid][dPass_count2]);
+					case 8: format(string, sizeof(string), " 2 : зарегистрирован, %s", admData[playid][dPass_ver2]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+		}
+	}
+#endif
+#if (MOD4DINS == 3)
+	switch(reg)
+	{
+		case 1, 2:
+		{
+			if(playconpass[playid] == 1)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playid][pPass_ver1]);
+					case 2: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data1], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver1]);
+						case 2: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 2)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playid][pPass_ver2]);
+					case 2: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data2], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver2]);
+						case 2: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 3)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 3 : используется, %s", PlayerInfo[playid][pPass_ver3]);
+					case 2: format(string, sizeof(string), " Паспорт 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver3], PlayerInfo[playid][pPass_inout3], PlayerInfo[playid][pPass_count3]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data3], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 3 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver3]);
+						case 2: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver3], PlayerInfo[playid][pPass_inout3], PlayerInfo[playid][pPass_count3]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 3, 4, 5, 6:
+		{
+			if(playconpass[playtrg] == 1)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 4: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+					case 5: format(string, sizeof(string), " 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 6: format(string, sizeof(string), " 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data1], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 4: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+						case 5: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 6: format(string, sizeof(string), " 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 2)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 4: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+					case 5: format(string, sizeof(string), " 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 6: format(string, sizeof(string), " 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data2], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 4: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+						case 5: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 6: format(string, sizeof(string), " 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 3)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+					case 4: format(string, sizeof(string), " Паспорт 3 : используется, %s", PlayerInfo[playtrg][pPass_ver3]);
+					case 5: format(string, sizeof(string), " 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+					case 6: format(string, sizeof(string), " 3 : используется, %s", PlayerInfo[playtrg][pPass_ver3]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data3], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 3 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 3 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+						case 4: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver3]);
+						case 5: format(string, sizeof(string), " 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+						case 6: format(string, sizeof(string), " 3 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver3]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 7, 8:
+		{
+			if(strcmp(admData[playid][dPass_data1], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver1], admData[playid][dPass_inout1], admData[playid][dPass_count1]);
+					case 8: format(string, sizeof(string), " 1 : зарегистрирован, %s", admData[playid][dPass_ver1]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data2], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver2], admData[playid][dPass_inout2], admData[playid][dPass_count2]);
+					case 8: format(string, sizeof(string), " 2 : зарегистрирован, %s", admData[playid][dPass_ver2]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data3], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 3 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 3 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver3], admData[playid][dPass_inout3], admData[playid][dPass_count3]);
+					case 8: format(string, sizeof(string), " 3 : зарегистрирован, %s", admData[playid][dPass_ver3]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+		}
+	}
+#endif
+#if (MOD4DINS == 4)
+	switch(reg)
+	{
+		case 1, 2:
+		{
+			if(playconpass[playid] == 1)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playid][pPass_ver1]);
+					case 2: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data1], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver1]);
+						case 2: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver1], PlayerInfo[playid][pPass_inout1], PlayerInfo[playid][pPass_count1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 2)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playid][pPass_ver2]);
+					case 2: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data2], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver2]);
+						case 2: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver2], PlayerInfo[playid][pPass_inout2], PlayerInfo[playid][pPass_count2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 3)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 3 : используется, %s", PlayerInfo[playid][pPass_ver3]);
+					case 2: format(string, sizeof(string), " Паспорт 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver3], PlayerInfo[playid][pPass_inout3], PlayerInfo[playid][pPass_count3]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data3], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 3 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver3]);
+						case 2: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver3], PlayerInfo[playid][pPass_inout3], PlayerInfo[playid][pPass_count3]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playid] == 4)
+			{
+				switch(reg)
+				{
+					case 1: format(string, sizeof(string), " Паспорт 4 : используется, %s", PlayerInfo[playid][pPass_ver4]);
+					case 2: format(string, sizeof(string), " Паспорт 4 : используется, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver4], PlayerInfo[playid][pPass_inout4], PlayerInfo[playid][pPass_count4]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playid][pPass_data4], "---", false) == 0)
+				{
+					SendClientMessage(playid, COLOR_GRAD1, " Паспорт 4 : пустой");
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 1: format(string, sizeof(string), " Паспорт 4 : зарегистрирован, %s", PlayerInfo[playid][pPass_ver4]);
+						case 2: format(string, sizeof(string), " Паспорт 4 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playid][pPass_ver4], PlayerInfo[playid][pPass_inout4], PlayerInfo[playid][pPass_count4]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 3, 4, 5, 6:
+		{
+			if(playconpass[playtrg] == 1)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 4: format(string, sizeof(string), " Паспорт 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+					case 5: format(string, sizeof(string), " 1 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+					case 6: format(string, sizeof(string), " 1 : используется, %s", PlayerInfo[playtrg][pPass_ver1]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data1], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 1 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 4: format(string, sizeof(string), " Паспорт 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+						case 5: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver1], PlayerInfo[playtrg][pPass_inout1], PlayerInfo[playtrg][pPass_count1]);
+						case 6: format(string, sizeof(string), " 1 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver1]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 2)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 4: format(string, sizeof(string), " Паспорт 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+					case 5: format(string, sizeof(string), " 2 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+					case 6: format(string, sizeof(string), " 2 : используется, %s", PlayerInfo[playtrg][pPass_ver2]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data2], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 2 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 4: format(string, sizeof(string), " Паспорт 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+						case 5: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver2], PlayerInfo[playtrg][pPass_inout2], PlayerInfo[playtrg][pPass_count2]);
+						case 6: format(string, sizeof(string), " 2 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver2]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 3)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+					case 4: format(string, sizeof(string), " Паспорт 3 : используется, %s", PlayerInfo[playtrg][pPass_ver3]);
+					case 5: format(string, sizeof(string), " 3 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+					case 6: format(string, sizeof(string), " 3 : используется, %s", PlayerInfo[playtrg][pPass_ver3]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data3], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 3 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 3 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+						case 4: format(string, sizeof(string), " Паспорт 3 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver3]);
+						case 5: format(string, sizeof(string), " 3 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver3], PlayerInfo[playtrg][pPass_inout3], PlayerInfo[playtrg][pPass_count3]);
+						case 6: format(string, sizeof(string), " 3 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver3]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+			if(playconpass[playtrg] == 4)
+			{
+				switch(reg)
+				{
+					case 3: format(string, sizeof(string), " Паспорт 4 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver4], PlayerInfo[playtrg][pPass_inout4], PlayerInfo[playtrg][pPass_count4]);
+					case 4: format(string, sizeof(string), " Паспорт 4 : используется, %s", PlayerInfo[playtrg][pPass_ver4]);
+					case 5: format(string, sizeof(string), " 4 : используется, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver4], PlayerInfo[playtrg][pPass_inout4], PlayerInfo[playtrg][pPass_count4]);
+					case 6: format(string, sizeof(string), " 4 : используется, %s", PlayerInfo[playtrg][pPass_ver4]);
+				}
+				SendClientMessage(playid, 0xCF4040FF, string);
+			}
+			else
+			{
+				if(strcmp(PlayerInfo[playtrg][pPass_data4], "---", false) == 0)
+				{
+					switch(reg)
+					{
+						case 3, 4:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " Паспорт 4 : пустой");
+						}
+						case 5, 6:
+						{
+							SendClientMessage(playid, COLOR_GRAD1, " 4 : пустой");
+						}
+					}
+				}
+				else
+				{
+					switch(reg)
+					{
+						case 3: format(string, sizeof(string), " Паспорт 4 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver4], PlayerInfo[playtrg][pPass_inout4], PlayerInfo[playtrg][pPass_count4]);
+						case 4: format(string, sizeof(string), " Паспорт 4 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver4]);
+						case 5: format(string, sizeof(string), " 4 : зарегистрирован, %s %s , коннектов: [%d]", PlayerInfo[playtrg][pPass_ver4], PlayerInfo[playtrg][pPass_inout4], PlayerInfo[playtrg][pPass_count4]);
+						case 6: format(string, sizeof(string), " 4 : зарегистрирован, %s", PlayerInfo[playtrg][pPass_ver4]);
+					}
+					SendClientMessage(playid, 0x40CF40FF, string);
+				}
+			}
+		}
+		case 7, 8:
+		{
+			if(strcmp(admData[playid][dPass_data1], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 1 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 1 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver1], admData[playid][dPass_inout1], admData[playid][dPass_count1]);
+					case 8: format(string, sizeof(string), " 1 : зарегистрирован, %s", admData[playid][dPass_ver1]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data2], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 2 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 2 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver2], admData[playid][dPass_inout2], admData[playid][dPass_count2]);
+					case 8: format(string, sizeof(string), " 2 : зарегистрирован, %s", admData[playid][dPass_ver2]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data3], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 3 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 3 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver3], admData[playid][dPass_inout3], admData[playid][dPass_count3]);
+					case 8: format(string, sizeof(string), " 3 : зарегистрирован, %s", admData[playid][dPass_ver3]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+			if(strcmp(admData[playid][dPass_data4], "---", false) == 0)
+			{
+				SendClientMessage(playid, COLOR_GRAD1, " 4 : пустой");
+			}
+			else
+			{
+				switch(reg)
+				{
+					case 7: format(string, sizeof(string), " 4 : зарегистрирован, %s %s , коннектов: [%d]", admData[playid][dPass_ver4], admData[playid][dPass_inout4], admData[playid][dPass_count4]);
+					case 8: format(string, sizeof(string), " 4 : зарегистрирован, %s", admData[playid][dPass_ver4]);
+				}
+				SendClientMessage(playid, 0x40CF40FF, string);
+			}
+		}
+	}
+#endif
+#if (MOD4DINS >= 1)
+    return 1;
+}
+#endif
+
+forward FnConAdmScrNet(admname[]);
+public FnConAdmScrNet(admname[])//проверка наличия ника админа в per-файле
+{
+	new condata1 = 0;
+	new condata2 = 0;
+	while(condata1 < 20)
+	{
+		if(strcmp(admname, scrnetper[condata1], false) == 0)//если ник админа найден, то:
+		{
+			condata2 = 1;
+			break;//завершаем цикл
+		}
+		condata1++;
+	}
+	if(condata2 == 1)//если ник админа найден, то:
+	{
+		return condata1;//возвращаем номер слота (от 0 до 19)
+	}
+	else//иначе, если ник админа НЕ найден, то:
+	{
+		return -1;//возвращаем -1
+	}
+}
+
+forward ScrNetPerLoad();
+public ScrNetPerLoad()//чтение per-файла
+{
+    new file, f[128], ssss[64];
+	format(f, sizeof(f), "data/scrnet1/_scrnetper.ini");
+	if(!fexist(f))//если файла не существует, то:
+	{//создаём файл
+		file = ini_createFile(f);
+		if(file >= 0)
+		{
+			for(new i = 0; i < 20; i++)
+			{
+				format(ssss, 64, "Name%03d", i);
+			    ini_setString(file, ssss, "");//записываем в файл пустую строку (за место ника)
+			}
+			ini_closeFile(file);
+		}
+	}
+	file = ini_openFile(f);//читаем файл
+	if(file >= 0)
+	{
+		for(new i = 0; i < 20; i++)
+		{
+			strdel(scrnetper[i], 0, 64);
+			format(ssss, 64, "Name%03d", i);
+		    ini_getString(file, ssss, scrnetper[i]);
+			if(strlen(scrnetper[i]) == 0)//если прочитана пустая строка (за место ника), то:
+			{
+				strcat(scrnetper[i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+			}
+			else//иначе, если прочитана НЕ пустая строка, то:
+			{
+				if(strlen(scrnetper[i]) > 25 || InpNameControl(scrnetper[i]) == 0)//если ник содержит ошибки, то:
+				{
+					strdel(scrnetper[i], 0, 64);//очищаем слот
+					ini_setString(file, ssss, scrnetper[i]);//перезаписываем в файл - слот, содержащий ошибки
+					strcat(scrnetper[i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+				}
+			}
+		}
+		ini_closeFile(file);
+	}
+	return 1;
+}
+
+forward ScrNetPerSave(slotname);
+public ScrNetPerSave(slotname)//запись ОДНОГО слота - для per-файла
+{
+    new file, f[128], ssss[64], str22[64];
+	strdel(str22, 0, 64);//создаём пустую строку с ником
+	if(strcmp(scrnetper[slotname], "*** INV_PL_ID", false) != 0)
+	{//если в слоте записан существующий ник, то:
+		strcat(str22, scrnetper[slotname]);//запишем ник в файл
+	}
+    format(f, sizeof(f), "data/scrnet1/_scrnetper.ini");
+	file = ini_openFile(f);//записываем в файл ОДИН слот с ником
+	if(file >= 0)
+	{
+		format(ssss, 64, "Name%03d", slotname);
+		ini_setString(file, ssss, str22);
+		ini_closeFile(file);
+	}
+	return 1;
+}
+
+forward ScrNet1LoadMark();
+public ScrNet1LoadMark()//чтение указателя на текущую БД сетевого экрана 1
+{
+    new file, f[128], locmark;
+	format(f, sizeof(f), "data/scrnet1/_scrnet1mark.ini");
+	if(!fexist(f))//если файла не существует, то:
+	{
+		file = ini_createFile(f);//создаём файл
+		if(file >= 0)
+		{
+			ini_setInteger(file, "Mark", 1);//записываем в файл - указатель на БД: _scrnet11.db
+			ini_closeFile(file);
+		}
+	}
+	file = ini_openFile(f);//читаем файл
+	if(file >= 0)
+	{
+		ini_getInteger(file, "Mark", locmark);//читаем указатель - на текущую БД сетевого экрана 1
+		ini_closeFile(file);
+	}
+	if(locmark < 1 || locmark > 2)//если в файле-указателе - неверные данные, то:
+	{
+		fremove(f);//удаляем файл с неверными данными
+		locmark = 1;
+		file = ini_createFile(f);//создаём файл
+		if(file >= 0)
+		{
+			ini_setInteger(file, "Mark", locmark);//записываем в файл - указатель на БД: _scrnet11.db
+			ini_closeFile(file);
+		}
+	}
+	scrnet1mark = locmark;//копируем данные из файла-указателя в глобальную переменную
+	return 1;
+}
+
+forward ScrNet1Save(playid, reg, slotnum);
+public ScrNet1Save(playid, reg, slotnum)//запись сетевого экрана 1 в БД
+{
+	new strdln[1000], locname[64];
+	if(playid != (MAX_PLAYERS - 1))
+	{
+		format(locname, sizeof(locname), "%s", RealName[playid]);
+	}
+	else
+	{
+		format(locname, sizeof(locname), "**** remote");
+	}
+	if(reg == 1 || reg == 2)
+	{
+		new locdata[2];
+		locdata[0] = (scrnet1b[0][playid] * 65536) + (scrnet1b[1][playid] * 256) + scrnet1b[2][playid];
+		locdata[1] = (scrnet1e[0][playid] * 65536) + (scrnet1e[1][playid] * 256) + scrnet1e[2][playid];
+		if(reg == 1)//режим добавления новой строки
+		{
+			format(strdln, sizeof(strdln), "INSERT INTO _scrnet1 (IDCopy,NumSt,Active,SN1b1,SN1b2,SN1b3,SN1b4,");//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sSN1e1,SN1e2,SN1e3,SN1e4,SN1b123,SN1e123,NameAdm) VALUES (1,%d,1,", strdln, slotnum);
+			format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, scrnet1b[0][playid], scrnet1b[1][playid], scrnet1b[2][playid], scrnet1b[3][playid]);
+			format(strdln, sizeof(strdln), "%s%d,%d,%d,%d,", strdln, scrnet1e[0][playid], scrnet1e[1][playid], scrnet1e[2][playid], scrnet1e[3][playid]);
+			format(strdln, sizeof(strdln), "%s%d,%d,'%s')", strdln, locdata[0], locdata[1], locname);
+		}
+		if(reg == 2)//режим замены старой строки новыми данными
+		{
+			format(strdln, sizeof(strdln), "UPDATE _scrnet1 SET Active = 1,");//создаём запрос БД
+			format(strdln, sizeof(strdln), "%sSN1b1 = %d,SN1b2 = %d,SN1b3 = %d,SN1b4 = %d,", strdln, scrnet1b[0][playid], scrnet1b[1][playid], scrnet1b[2][playid], scrnet1b[3][playid]);
+			format(strdln, sizeof(strdln), "%sSN1e1 = %d,SN1e2 = %d,SN1e3 = %d,SN1e4 = %d,", strdln, scrnet1e[0][playid], scrnet1e[1][playid], scrnet1e[2][playid], scrnet1e[3][playid]);
+			format(strdln, sizeof(strdln), "%sSN1b123 = %d,SN1e123 = %d,", strdln, locdata[0], locdata[1]);
+			format(strdln, sizeof(strdln), "%sNameAdm = '%s' WHERE (NumSt = %d)", strdln, locname, slotnum);
+		}
+	}
+	if(reg == 3)//режим удаления записи из строки
+	{
+		format(strdln, sizeof(strdln), "UPDATE _scrnet1 SET Active = 0,");//создаём запрос БД
+		format(strdln, sizeof(strdln), "%sNameAdm = '%s' WHERE (NumSt = %d)", strdln, locname, slotnum);
+	}
+	db_query(scrnet1db, strdln);//отправляем запрос БД сетевого экрана 1
+	return 1;
+}
+
+forward ScrNet1LoadNamePass(playid, filenum);
+public ScrNet1LoadNamePass(playid, filenum)//чтение np-файла - для сетевого экрана 1
+{
+    new file, f[128], ssss[64], locdata1, locdata2;
+	format(f, sizeof(f), "data/scrnet1/np1%05d.ini", filenum);
+	if(!fexist(f))//если файла не существует, то:
+	{
+		return 0;//возвращаем 0 (файла не существует)
+	}
+	file = ini_openFile(f);//читаем файл
+	if(file >= 0)
+	{
+		for(new i = 0; i < 20; i++)
+		{
+			strdel(scrnetnamegl[playid][i], 0, 64);
+			format(ssss, 64, "Name1%02d", i);
+		    ini_getString(file, ssss, scrnetnamegl[playid][i]);
+			if(strlen(scrnetnamegl[playid][i]) == 0)//если прочитана пустая строка (за место ника), то:
+			{
+				strcat(scrnetnamegl[playid][i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+			}
+			else//иначе, если прочитана НЕ пустая строка, то:
+			{
+				if(strlen(scrnetnamegl[playid][i]) > 25 || InpNameControl(scrnetnamegl[playid][i]) == 0)//если ник содержит ошибки, то:
+				{
+					strdel(scrnetnamegl[playid][i], 0, 64);//очищаем слот
+					ini_setString(file, ssss, scrnetnamegl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+					strcat(scrnetnamegl[playid][i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+				}
+			}
+			strdel(scrnetpassgl[playid][i], 0, 64);
+			format(ssss, 64, "Pass1%02d", i);
+		    ini_getString(file, ssss, scrnetpassgl[playid][i]);
+			if(strlen(scrnetpassgl[playid][i]) == 0)//если прочитана пустая строка (за место паспорта), то:
+			{
+				strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+			}
+			else//иначе, если прочитана НЕ пустая строка, то:
+			{
+				if(FngpciControl(scrnetpassgl[playid][i]) == 0)//если паспорт содержит ошибки, то:
+				{
+					strdel(scrnetpassgl[playid][i], 0, 64);//очищаем слот
+					ini_setString(file, ssss, scrnetpassgl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+					strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+				}
+			}
+			if(scrnetnamegl[playid][i][0] == 42 && scrnetpassgl[playid][i][0] != 42)
+			{//если нет ника, но есть паспорт, то:
+				strdel(scrnetpassgl[playid][i], 0, 64);//очищаем слот
+				ini_setString(file, ssss, scrnetpassgl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+				strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+			}
+		}
+		ini_closeFile(file);
+	}
+	locdata1 = 0;
+	locdata2 = 0;
+	while(locdata1 < 20)
+	{
+		if(strcmp(scrnetnamegl[playid][locdata1], "*** INV_PL_ID", false) != 0 ||
+		strcmp(scrnetpassgl[playid][locdata1], "*** INV_PASS_ID", false) != 0)
+		{
+			locdata2 = 1;
+			break;
+		}
+		locdata1++;
+	}
+	if(locdata2 == 0)//если в np-файле нет ни одного занятого слота, то:
+	{
+		if(fexist(f))//если np-файл существует, то:
+		{
+			fremove(f);//удаляем np-файл
+			return 0;//возвращаем 0 (файла не существует)
+		}
+	}
+	return 1;//возвращаем 1 (файл существует)
+}
+
+forward ScrNet1SaveNamePass(playid, filenum, slotnum);
+public ScrNet1SaveNamePass(playid, filenum, slotnum)//запись в ОДИН np-файл ОДНОГО слота - для сетевого экрана 1
+{
+    new file, f[128], ssss[64], str22[64], str33[64], locdata1, locdata2;
+    format(f, sizeof(f), "data/scrnet1/np1%05d.ini", filenum);
+	locdata1 = 0;
+	locdata2 = 0;
+	while(locdata1 < 20)
+	{
+		if(strcmp(scrnetnamegl[playid][locdata1], "*** INV_PL_ID", false) != 0 ||
+		strcmp(scrnetpassgl[playid][locdata1], "*** INV_PASS_ID", false) != 0)
+		{
+			locdata2 = 1;
+			break;
+		}
+		locdata1++;
+	}
+	if(locdata2 == 0)//если в np-файле нет ни одного занятого слота, то:
+	{
+		if(fexist(f))//если np-файл существует, то:
+		{
+			fremove(f);//удаляем np-файл
+		}
+	}
+	else//если в np-файле есть хотя бы один занятый слот, то:
+	{
+		if(!fexist(f))//если np-файла не существует, то:
+		{
+			file = ini_createFile(f);//создаём файл, и записываем в файл ВСЕ слоты
+			if(file >= 0)
+			{
+				for(new i = 0; i < 20; i++)
+				{
+					strdel(str22, 0, 64);//создаём пустую строку с ником
+					strdel(str33, 0, 64);//создаём пустую строку с паспортом
+					if(strcmp(scrnetnamegl[playid][i], "*** INV_PL_ID", false) != 0)
+					{//если в слоте записан существующий ник, то:
+						strcat(str22, scrnetnamegl[playid][i]);//запишем ник в файл
+					}
+					if(strcmp(scrnetpassgl[playid][i], "*** INV_PASS_ID", false) != 0)
+					{//если в слоте записан существующий паспорт, то:
+						strcat(str33, scrnetpassgl[playid][i]);//запишем паспорт в файл
+					}
+					format(ssss, 64, "Name1%02d", i);
+				    ini_setString(file, ssss, str22);
+					format(ssss, 64, "Pass1%02d", i);
+				    ini_setString(file, ssss, str33);
+				}
+				ini_closeFile(file);
+			}
+		}
+		else//иначе, если np-файл существует, то:
+		{
+			file = ini_openFile(f);//записываем в файл ОДИН слот
+			if(file >= 0)
+			{
+				strdel(str22, 0, 64);//создаём пустую строку с ником
+				strdel(str33, 0, 64);//создаём пустую строку с паспортом
+				if(strcmp(scrnetnamegl[playid][slotnum], "*** INV_PL_ID", false) != 0)
+				{//если в слоте записан существующий ник, то:
+					strcat(str22, scrnetnamegl[playid][slotnum]);//запишем ник в файл
+				}
+				if(strcmp(scrnetpassgl[playid][slotnum], "*** INV_PASS_ID", false) != 0)
+				{//если в слоте записан существующий паспорт, то:
+					strcat(str33, scrnetpassgl[playid][slotnum]);//запишем паспорт в файл
+				}
+				format(ssss, 64, "Name1%02d", slotnum);
+				ini_setString(file, ssss, str22);
+				format(ssss, 64, "Pass1%02d", slotnum);
+				ini_setString(file, ssss, str33);
+				ini_closeFile(file);
+			}
+		}
+	}
+	return 1;
+}
+
+forward ScrNet2Load();
+public ScrNet2Load()//чтение ВСЕГО сетевого экрана 2
+{
+    new file, f[128], ssss[64], strload[128];
+    format(f, sizeof(f), "data/scrnet2/_scrnet2.ini");
+	if(!fexist(f))//если файла не существует, то:
+	{//создаём файл
+		file = ini_createFile(f);
+		if(file >= 0)
+		{
+			for(new i = 0; i < 200; i++)
+			{
+				format(ssss, 64, "ScrNet2%03d", i);
+			    ini_setString(file, ssss, "");//записываем в файл пустую строку (за место IP-адресов)
+			}
+			ini_closeFile(file);
+		}
+	}
+	file = ini_openFile(f);//читаем файл
+	if(file >= 0)
+	{
+		for(new i = 0; i < 200; i++)
+		{
+			strdel(strload, 0, 128);
+			format(ssss, 64, "ScrNet2%03d", i);
+		    ini_getString(file, ssss, strload);
+			if(ScrNetCC(0, strload, 2, i) == 0)
+			{//если IP-адреса содержат ошибки, или посторонние символы, то:
+				for(new j = 0; j < 4; j++)
+				{//записываем в слот несуществующие IP-адреса (256.256.256.256 - -1.-1.-1.-1)
+					scrnet2b[j][i] = 256;
+					scrnet2e[j][i] = -1;
+				}
+				scrnet2b123[i] = -1;
+				scrnet2e123[i] = -1;
+				strdel(strload, 0, 128);//перезаписываем в файл - слот, содержащий ошибки
+				ini_setString(file, ssss, strload);
+			}
+		}
+		ini_closeFile(file);
+	}
+	return 1;
+}
+
+forward ScrNet2Save(slotnum);
+public ScrNet2Save(slotnum)//запись ОДНОГО слота - для сетевого экрана 2
+{
+    new file, f[128], ssss[64], str22[128];
+	strdel(str22, 0, 128);//создаём пустую строку (для записи в файл)
+	if(scrnet2b[0][slotnum] != 256)//если в слоте записаны существующие IP-адреса, то:
+	{
+		format(str22, 128, "%d.%d.%d.%d - %d.%d.%d.%d", scrnet2b[0][slotnum], scrnet2b[1][slotnum], scrnet2b[2][slotnum], scrnet2b[3][slotnum],
+		scrnet2e[0][slotnum], scrnet2e[1][slotnum], scrnet2e[2][slotnum], scrnet2e[3][slotnum]);//запишем в файл IP-адреса
+	}
+    format(f, sizeof(f), "data/scrnet2/_scrnet2.ini");
+	file = ini_openFile(f);//записываем в файл ОДИН слот для сетевого экрана 2
+	if(file >= 0)
+	{
+		format(ssss, 64, "ScrNet2%03d", slotnum);
+	    ini_setString(file, ssss, str22);
+		ini_closeFile(file);
+	}
+	return 1;
+}
+
+forward ScrNet2LoadNamePass(playid, filenum);
+public ScrNet2LoadNamePass(playid, filenum)//чтение np-файла - для сетевого экрана 2
+{
+    new file, f[128], ssss[64], locdata1, locdata2;
+	format(f, sizeof(f), "data/scrnet2/np2%03d.ini", filenum);
+	if(!fexist(f))//если файла не существует, то:
+	{
+		return 0;//возвращаем 0 (файла не существует)
+	}
+	file = ini_openFile(f);//читаем файл
+	if(file >= 0)
+	{
+		for(new i = 0; i < 20; i++)
+		{
+			strdel(scrnetnamegl[playid][i], 0, 64);
+			format(ssss, 64, "Name2%02d", i);
+		    ini_getString(file, ssss, scrnetnamegl[playid][i]);
+			if(strlen(scrnetnamegl[playid][i]) == 0)//если прочитана пустая строка (за место ника), то:
+			{
+				strcat(scrnetnamegl[playid][i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+			}
+			else//иначе, если прочитана НЕ пустая строка, то:
+			{
+				if(strlen(scrnetnamegl[playid][i]) > 25 || InpNameControl(scrnetnamegl[playid][i]) == 0)//если ник содержит ошибки, то:
+				{
+					strdel(scrnetnamegl[playid][i], 0, 64);//очищаем слот
+					ini_setString(file, ssss, scrnetnamegl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+					strcat(scrnetnamegl[playid][i], "*** INV_PL_ID");//записываем в слот несуществующий ник
+				}
+			}
+			strdel(scrnetpassgl[playid][i], 0, 64);
+			format(ssss, 64, "Pass2%02d", i);
+		    ini_getString(file, ssss, scrnetpassgl[playid][i]);
+			if(strlen(scrnetpassgl[playid][i]) == 0)//если прочитана пустая строка (за место паспорта), то:
+			{
+				strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+			}
+			else//иначе, если прочитана НЕ пустая строка, то:
+			{
+				if(FngpciControl(scrnetpassgl[playid][i]) == 0)//если паспорт содержит ошибки, то:
+				{
+					strdel(scrnetpassgl[playid][i], 0, 64);//очищаем слот
+					ini_setString(file, ssss, scrnetpassgl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+					strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+				}
+			}
+			if(scrnetnamegl[playid][i][0] == 42 && scrnetpassgl[playid][i][0] != 42)
+			{//если нет ника, но есть паспорт, то:
+				strdel(scrnetpassgl[playid][i], 0, 64);//очищаем слот
+				ini_setString(file, ssss, scrnetpassgl[playid][i]);//перезаписываем в файл - слот, содержащий ошибки
+				strcat(scrnetpassgl[playid][i], "*** INV_PASS_ID");//записываем в слот несуществующий паспорт
+			}
+		}
+		ini_closeFile(file);
+	}
+	locdata1 = 0;
+	locdata2 = 0;
+	while(locdata1 < 20)
+	{
+		if(strcmp(scrnetnamegl[playid][locdata1], "*** INV_PL_ID", false) != 0 ||
+		strcmp(scrnetpassgl[playid][locdata1], "*** INV_PASS_ID", false) != 0)
+		{
+			locdata2 = 1;
+			break;
+		}
+		locdata1++;
+	}
+	if(locdata2 == 0)//если в np-файле нет ни одного занятого слота, то:
+	{
+		if(fexist(f))//если np-файл существует, то:
+		{
+			fremove(f);//удаляем np-файл
+			return 0;//возвращаем 0 (файла не существует)
+		}
+	}
+	return 1;//возвращаем 1 (файл существует)
+}
+
+forward ScrNet2SaveNamePass(playid, filenum, slotnum);
+public ScrNet2SaveNamePass(playid, filenum, slotnum)//запись в ОДИН np-файл ОДНОГО слота - для сетевого экрана 2
+{
+    new file, f[128], ssss[64], str22[64], str33[64], locdata1, locdata2;
+    format(f, sizeof(f), "data/scrnet2/np2%03d.ini", filenum);
+	locdata1 = 0;
+	locdata2 = 0;
+	while(locdata1 < 20)
+	{
+		if(strcmp(scrnetnamegl[playid][locdata1], "*** INV_PL_ID", false) != 0 ||
+		strcmp(scrnetpassgl[playid][locdata1], "*** INV_PASS_ID", false) != 0)
+		{
+			locdata2 = 1;
+			break;
+		}
+		locdata1++;
+	}
+	if(locdata2 == 0)//если в np-файле нет ни одного занятого слота, то:
+	{
+		if(fexist(f))//если np-файл существует, то:
+		{
+			fremove(f);//удаляем np-файл
+		}
+	}
+	else//если в np-файле есть хотя бы один занятый слот, то:
+	{
+		if(!fexist(f))//если np-файла не существует, то:
+		{
+			file = ini_createFile(f);//создаём файл, и записываем в файл ВСЕ слоты
+			if(file >= 0)
+			{
+				for(new i = 0; i < 20; i++)
+				{
+					strdel(str22, 0, 64);//создаём пустую строку с ником
+					strdel(str33, 0, 64);//создаём пустую строку с паспортом
+					if(strcmp(scrnetnamegl[playid][i], "*** INV_PL_ID", false) != 0)
+					{//если в слоте записан существующий ник, то:
+						strcat(str22, scrnetnamegl[playid][i]);//запишем ник в файл
+					}
+					if(strcmp(scrnetpassgl[playid][i], "*** INV_PASS_ID", false) != 0)
+					{//если в слоте записан существующий паспорт, то:
+						strcat(str33, scrnetpassgl[playid][i]);//запишем паспорт в файл
+					}
+					format(ssss, 64, "Name2%02d", i);
+				    ini_setString(file, ssss, str22);
+					format(ssss, 64, "Pass2%02d", i);
+				    ini_setString(file, ssss, str33);
+				}
+				ini_closeFile(file);
+			}
+		}
+		else//иначе, если np-файл существует, то:
+		{
+			file = ini_openFile(f);//записываем в файл ОДИН слот
+			if(file >= 0)
+			{
+				strdel(str22, 0, 64);//создаём пустую строку с ником
+				strdel(str33, 0, 64);//создаём пустую строку с паспортом
+				if(strcmp(scrnetnamegl[playid][slotnum], "*** INV_PL_ID", false) != 0)
+				{//если в слоте записан существующий ник, то:
+					strcat(str22, scrnetnamegl[playid][slotnum]);//запишем ник в файл
+				}
+				if(strcmp(scrnetpassgl[playid][slotnum], "*** INV_PASS_ID", false) != 0)
+				{//если в слоте записан существующий паспорт, то:
+					strcat(str33, scrnetpassgl[playid][slotnum]);//запишем паспорт в файл
+				}
+				format(ssss, 64, "Name2%02d", slotnum);
+				ini_setString(file, ssss, str22);
+				format(ssss, 64, "Pass2%02d", slotnum);
+				ini_setString(file, ssss, str33);
+				ini_closeFile(file);
+			}
+		}
+	}
+	return 1;
+}
+
+forward ScrNetCC(playid, scrnetgl[], scrnum, slotnum);//конвертор + контроль IP-адресов на ошибки,
+public ScrNetCC(playid, scrnetgl[], scrnum, slotnum)//и на посторонние символы - для сетевых экранов 1 и 2
+{//scrnum=1 - сетевой экран 1 (база данных), scrnum=2 - сетевой экран 2 (200 слотов)
+	if(strlen(scrnetgl) == 0)//если входная строка пустая, то:
+	{
+		for(new i = 0; i < 4; i++)
+		{
+			if(scrnum == 1)//запись в слот сетевого экрана 1
+			{//несуществующих IP-адресов (256.256.256.256 - -1.-1.-1.-1)
+				scrnet1b[i][playid] = 256;
+				scrnet1e[i][playid] = -1;
+			}
+			if(scrnum == 2)//запись в слот сетевого экрана 2
+			{//несуществующих IP-адресов (256.256.256.256 - -1.-1.-1.-1)
+				scrnet2b[i][slotnum] = 256;
+				scrnet2e[i][slotnum] = -1;
+			}
+		}
+		if(scrnum == 2)//запись в слот сетевого экрана 2 данных для поиска
+		{
+			scrnet2b123[slotnum] = -1;
+			scrnet2e123[slotnum] = -1;
+		}
+		return 1;//успешное завершение функции
+	}
+	if(strfind(scrnetgl, " - ", false) == -1)//если во входной строке НЕ найдено
+	{//последовательности символов " - ", то:
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	new ind1 = 0;//индекс входной строки
+	new locstr[8][8];//объявляем 8-м выходных строк
+	for(new i = 0; i < 8; i++)
+	{
+		strdel(locstr[i], 0, 8);//обнуляем 8-м выходных строк
+	}
+	new ind2 = 0;//индекс выходной строки
+	new count2 = 0;//счётчик выходных строк
+	new count3 = 0;//счётчик символов "точка"
+	new count4 = 0;//счётчик символов "-"
+	new count5 = 0;//счётчик символов "пробел"
+	new mrk1;//маркер ошибки
+	while(ind1 < 128)
+	{
+		mrk1 = 1;//устанавливаем маркер ошибки
+		if(scrnetgl[ind1] == 0)//если найден конец входной стороки, то:
+		{
+			mrk1 = 0;//обнуляем маркер ошибки
+			break;//завершаем цикл
+		}
+		if(scrnetgl[ind1] == '.')//если найден символ "точка", то:
+		{
+			ind2 = 0;//обнуляем индекс выходной строки
+			count2++;//счётчик выходных строк + 1
+			count3++;//счётчик символов "точка" + 1
+			mrk1 = 0;//обнуляем маркер ошибки
+		}
+		if(scrnetgl[ind1] >= 48 && scrnetgl[ind1] <= 57)//если найдена цифра от 0 до 9, то:
+		{
+			locstr[count2][ind2] = scrnetgl[ind1];//копирование цифры в выходную строку
+			ind2++;//индекс выходной строки + 1
+			mrk1 = 0;//обнуляем маркер ошибки
+		}
+		if(scrnetgl[ind1] == '-')//если найден символ "-", то:
+		{
+			if(count2 != 3 || count3 != 3 || count4 != 0 || count5 != 1)
+			{//если найдена ошибка в счётчиках, то:
+				mrk1 = 1;//устанавливаем маркер ошибки
+				break;//завершаем цикл
+			}
+			ind2 = 0;//обнуляем индекс выходной строки
+			count2++;//счётчик выходных строк + 1
+			count4++;//счётчик символов "-" + 1
+			mrk1 = 0;//обнуляем маркер ошибки
+		}
+		if(scrnetgl[ind1] == ' ')//если найден символ "пробел", то:
+		{
+			count5++;//счётчик символов "пробел" + 1
+			mrk1 = 0;//обнуляем маркер ошибки
+		}
+		if(mrk1 == 1) { break; }//если маркер ошибки установлен, то: завершаем цикл
+		ind1++;//индекс входной строки + 1
+	}
+	if(mrk1 == 1)//если маркер ошибки установлен, то:
+	{
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	if(count2 != 7 || count3 != 6 || count4 != 1 || count5 != 2)
+	{//если найдена ошибка в счётчиках, то:
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	new datalocb[4], dataloce[4];
+	ind1 = 0;//устанавливаем переменную цикла
+	mrk1 = 0;//обнуляем маркер ошибки
+	while(ind1 < 4)
+	{
+		datalocb[ind1] = strval(locstr[ind1]);//копируем IP-адреса в локальные переменные
+		dataloce[ind1] = strval(locstr[ind1+4]);
+		if(datalocb[ind1] < 0 || datalocb[ind1] > 255 || dataloce[ind1] < 0 || dataloce[ind1] > 255)
+		{//если запись меньше 0 или больше 255, то:
+			mrk1 = 1;//устанавливаем маркер ошибки
+			break;//завершаем цикл
+		}
+		ind1++;//переменная цикла + 1
+	}
+	if(mrk1 == 1)//если маркер ошибки установлен, то:
+	{
+		return 0;//завершаем функцию с указанием ошибки
+	}
+/*
+//---------- проверка на предмет того, что IP-1 меньше IP-2 (начало) -----------
+	if(datalocb[0] > dataloce[0])//если в группе-1 - IP-1 больше IP-2, то:
+	{
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	else//иначе, если в группе-1 - IP-1 меньше или равен IP-2, то:
+	{
+		if((dataloce[0] - datalocb[0]) > 50)//если в группе-1 - разница между IP-1 и IP-2 больше 50, то:
+		{
+			return 0;//завершаем функцию с указанием ошибки
+		}
+		if(datalocb[0] == dataloce[0])//если в группе-1 - IP-1 равен IP-2, то:
+		{
+			if(datalocb[1] > dataloce[1])//если в группе-2 - IP-1 больше IP-2, то:
+			{
+				return 0;//завершаем функцию с указанием ошибки
+			}
+			else//иначе, если в группе-2 - IP-1 меньше или равен IP-2, то:
+			{
+				if(datalocb[1] == dataloce[1])//если в группе-2 - IP-1 равен IP-2, то:
+				{
+					if(datalocb[2] > dataloce[2])//если в группе-3 - IP-1 больше IP-2, то:
+					{
+						return 0;//завершаем функцию с указанием ошибки
+					}
+					else//иначе, если в группе-3 - IP-1 меньше или равен IP-2, то:
+					{
+						if(datalocb[2] == dataloce[2])//если в группе-3 - IP-1 равен IP-2, то:
+						{
+							if(datalocb[3] > dataloce[3])//если в группе-4 - IP-1 больше IP-2, то:
+							{
+								return 0;//завершаем функцию с указанием ошибки
+							}
+							else//иначе, если в группе-4 - IP-1 меньше или равен IP-2, то:
+							{
+								if(datalocb[3] == dataloce[3])//если в группе-4 - IP-1 равен IP-2, то:
+								{
+									return 0;//завершаем функцию с указанием ошибки
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+//---------- проверка на предмет того, что IP-1 меньше IP-2 (конец) ------------
+*/
+//----- проверка на предмет того, что IP-1 меньше или равен IP-2 (начало) ------
+	if(datalocb[0] > dataloce[0])//если в группе-1 - IP-1 больше IP-2, то:
+	{
+		return 0;//завершаем функцию с указанием ошибки
+	}
+	else//иначе, если в группе-1 - IP-1 меньше или равен IP-2, то:
+	{
+		if((dataloce[0] - datalocb[0]) > 50)//если в группе-1 - разница между IP-1 и IP-2 больше 50, то:
+		{
+			return 0;//завершаем функцию с указанием ошибки
+		}
+		if(datalocb[0] == dataloce[0])//если в группе-1 - IP-1 равен IP-2, то:
+		{
+			if(datalocb[1] > dataloce[1])//если в группе-2 - IP-1 больше IP-2, то:
+			{
+				return 0;//завершаем функцию с указанием ошибки
+			}
+			else//иначе, если в группе-2 - IP-1 меньше или равен IP-2, то:
+			{
+				if(datalocb[1] == dataloce[1])//если в группе-2 - IP-1 равен IP-2, то:
+				{
+					if(datalocb[2] > dataloce[2])//если в группе-3 - IP-1 больше IP-2, то:
+					{
+						return 0;//завершаем функцию с указанием ошибки
+					}
+					else//иначе, если в группе-3 - IP-1 меньше или равен IP-2, то:
+					{
+						if(datalocb[2] == dataloce[2])//если в группе-3 - IP-1 равен IP-2, то:
+						{
+							if(datalocb[3] > dataloce[3])//если в группе-4 - IP-1 больше IP-2, то:
+							{
+								return 0;//завершаем функцию с указанием ошибки
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+//----- проверка на предмет того, что IP-1 меньше или равен IP-2 (конец) ------
+	for(new i = 0; i < 4; i++)
+	{
+		if(scrnum == 1)//запись в слот сетевого экрана 1
+		{//несуществующих IP-адресов (256.256.256.256 - -1.-1.-1.-1)
+			scrnet1b[i][playid] = datalocb[i];
+			scrnet1e[i][playid] = dataloce[i];
+		}
+		if(scrnum == 2)//запись в слот сетевого экрана 2
+		{//несуществующих IP-адресов (256.256.256.256 - -1.-1.-1.-1)
+			scrnet2b[i][slotnum] = datalocb[i];
+			scrnet2e[i][slotnum] = dataloce[i];
+		}
+	}
+	if(scrnum == 2)//запись в слот сетевого экрана 2 данных для поиска
+	{
+		scrnet2b123[slotnum] = (scrnet2b[0][slotnum] * 65536) + (scrnet2b[1][slotnum] * 256) + scrnet2b[2][slotnum];
+		scrnet2e123[slotnum] = (scrnet2e[0][slotnum] * 65536) + (scrnet2e[1][slotnum] * 256) + scrnet2e[2][slotnum];
+	}
+	return 1;//успешное завершение функции
+}
+
 #if (MOD90INS == 1 && MOD91INS == 1)
 forward CreateDB();
 public CreateDB()
 {
 	playerdb = db_open("players/players.db");//подключаем базу данных аккаунтов игроков к серверу
-	new strdln[2500];
+	new strdln[5000];
 	format(strdln, sizeof(strdln), "CREATE TABLE Players(IDCopy INTEGER,Name VARCHAR(32),Key VARCHAR(32),TDReg VARCHAR(32),DEndConD INTEGER,");//создаём запрос БД
 	format(strdln, sizeof(strdln), "%sDEndConM INTEGER,DEndConY INTEGER,IPAdr VARCHAR(32),MinLog INTEGER,AdminLevel INTEGER,AdminShadow INTEGER,", strdln);
 	format(strdln, sizeof(strdln), "%sAdminLive INTEGER,Registered INTEGER,Prison INTEGER,Prisonsec INTEGER,Muted INTEGER,Mutedsec INTEGER,", strdln);
@@ -40272,7 +43386,12 @@ public CreateDB()
 	format(strdln, sizeof(strdln), "%sWeapon_slot10 INTEGER,Weapon_slot11 INTEGER,Weapon_slot12 INTEGER,", strdln);
 	format(strdln, sizeof(strdln), "%sAmmo_slot0 INTEGER,Ammo_slot1 INTEGER,Ammo_slot2 INTEGER,Ammo_slot3 INTEGER,Ammo_slot4 INTEGER,", strdln);
 	format(strdln, sizeof(strdln), "%sAmmo_slot5 INTEGER,Ammo_slot6 INTEGER,Ammo_slot7 INTEGER,Ammo_slot8 INTEGER,Ammo_slot9 INTEGER,", strdln);
-	format(strdln, sizeof(strdln), "%sAmmo_slot10 INTEGER,Ammo_slot11 INTEGER,Ammo_slot12 INTEGER)", strdln);
+	format(strdln, sizeof(strdln), "%sAmmo_slot10 INTEGER,Ammo_slot11 INTEGER,Ammo_slot12 INTEGER,", strdln);
+	format(strdln, sizeof(strdln), "%sPass_data1 VARCHAR(64),Pass_inout1 VARCHAR(64),Pass_ver1 VARCHAR(32),Pass_count1 INTEGER,", strdln);
+	format(strdln, sizeof(strdln), "%sPass_data2 VARCHAR(64),Pass_inout2 VARCHAR(64),Pass_ver2 VARCHAR(32),Pass_count2 INTEGER,", strdln);
+	format(strdln, sizeof(strdln), "%sPass_data3 VARCHAR(64),Pass_inout3 VARCHAR(64),Pass_ver3 VARCHAR(32),Pass_count3 INTEGER,", strdln);
+	format(strdln, sizeof(strdln), "%sPass_data4 VARCHAR(64),Pass_inout4 VARCHAR(64),Pass_ver4 VARCHAR(32),Pass_count4 INTEGER,", strdln);
+	format(strdln, sizeof(strdln), "%sPassMode INTEGER,PassDel INTEGER,PassLock INTEGER,PassError INTEGER)", strdln);
 	db_query(playerdb, strdln);//отправляем запрос на создание новой (пустой) БД
 	print(" ");
 	print(" * Новая (пустая) база данных аккаунтов игроков успешно создана !");
